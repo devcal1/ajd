@@ -315,12 +315,27 @@
 <!-- ============ CLIENT PORTAL (standalone, bypasses shell) ============ -->
 <div id="portal-view" data-route="portal" class="min-h-screen">
   <div class="max-w-3xl mx-auto px-6 py-10">
-    <div class="flex items-center justify-between mb-8">
+    <div class="flex items-center justify-between mb-6">
       <span class="font-display text-2xl" style="color:var(--terracotta-dark)">AJD</span>
       <span class="text-sm" style="color:var(--ink-soft)">Client Portal</span>
     </div>
-    <h1 id="portal-proj-name" class="font-display text-3xl mb-1"></h1>
-    <p id="portal-proj-client" class="text-sm mb-8" style="color:var(--ink-soft)"></p>
+
+    <div id="portal-hero" class="relative rounded-2xl overflow-hidden mb-4 bg-cover bg-center" style="height:140px; background-color:var(--paper-2);">
+      <div class="absolute inset-0" style="background:linear-gradient(to top, rgba(0,0,0,.68) 0%, rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 100%);"></div>
+      <div class="absolute top-3 right-3">
+        <span id="portal-hero-status" class="tag" style="background:rgba(255,255,255,.92); backdrop-filter:blur(4px);"></span>
+      </div>
+      <div class="absolute left-4 right-4 bottom-3">
+        <h1 id="portal-proj-name" class="font-display text-3xl text-white leading-tight" style="text-shadow:0 1px 6px rgba(0,0,0,.45)"></h1>
+        <p id="portal-proj-client" class="text-sm mt-0.5" style="color:rgba(255,255,255,.88); text-shadow:0 1px 4px rgba(0,0,0,.45)"></p>
+      </div>
+    </div>
+
+    <div id="portal-progress" class="flex flex-wrap items-center gap-2 mb-8"></div>
+
+    <h2 class="font-display text-xl mb-3">Progress</h2>
+    <div id="portal-milestone-timeline" class="card p-6 overflow-x-auto mb-10 hidden"></div>
+    <div id="portal-milestone-empty" class="hidden text-center py-10 text-sm mb-10" style="color:var(--ink-soft)">No milestones yet.</div>
 
     <h2 class="font-display text-xl mb-3">Mood board</h2>
     <div id="portal-moodboard" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-10"></div>
@@ -2417,16 +2432,17 @@ function milestoneNodeStatus(m){
   if(!isNaN(target.getTime()) && target.getTime() < Date.now()) return 'overdue';
   return 'upcoming';
 }
-function renderMilestones(id){
-  const rows = (state.milestones && state.milestones[id]) || [];
-  const emptyEl = document.getElementById('milestone-empty');
-  const timelineEl = document.getElementById('milestone-timeline');
-  if(!timelineEl) return;
-  if(emptyEl) emptyEl.classList.toggle('hidden', rows.length>0);
-  timelineEl.classList.toggle('hidden', rows.length===0);
-  if(!rows.length){ timelineEl.innerHTML = ''; return; }
+// Builds the full timeline markup (node circles + connecting line + labels) for a set of
+// already-sorted milestone rows. Shared by the internal Milestones tab (interactive: delete
+// button + toggle-done click on the circle) and the read-only client portal (opts.interactive
+// false: plain non-interactive circle, identical status styling, no delete/toggle affordances).
+// Returns '' for an empty rows array — caller is responsible for the empty-state UI.
+function milestoneTimelineHtml(rows, opts){
+  opts = opts || {};
+  const interactive = !!opts.interactive;
+  const projId = opts.projId;
+  if(!rows.length) return '';
 
-  const sorted = rows.slice().sort((a,b)=>(a.targetDate||'').localeCompare(b.targetDate||''));
   const fmtDate = d => {
     const dt = new Date(d + 'T00:00:00');
     return isNaN(dt.getTime()) ? (d||'') : dt.toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
@@ -2435,7 +2451,7 @@ function renderMilestones(id){
   const headerHeight = 48; // circle sits vertically centered in this band, so the connecting line (also centered here) lines up regardless of the delete affordance above it
   const lineCenter = headerHeight / 2;
 
-  const nodesHtml = sorted.map(m=>{
+  const nodesHtml = rows.map(m=>{
     const status = milestoneNodeStatus(m);
     let circleStyle, innerHtml;
     if(status === 'done'){
@@ -2449,11 +2465,17 @@ function renderMilestones(id){
       innerHtml = '';
     }
     const labelColor = status === 'overdue' ? 'var(--red)' : 'var(--ink)';
+    const circleHtml = interactive
+      ? `<button onclick="toggleMilestone('${projId}','${m.id}')" title="${status==='done' ? 'Mark as not done' : 'Mark as done'}" class="rounded-full flex items-center justify-center transition-shadow hover:shadow-md" style="width:28px; height:28px; ${circleStyle}">${innerHtml}</button>`
+      : `<div class="rounded-full flex items-center justify-center" style="width:28px; height:28px; ${circleStyle}">${innerHtml}</div>`;
+    const deleteBtn = interactive
+      ? `<button onclick="deleteMilestone('${projId}','${m.id}')" title="Remove milestone" class="absolute top-0 right-4 text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>`
+      : '';
     return `
       <div class="flex flex-col items-center" style="width:${nodeWidth}px; flex-shrink:0;">
         <div class="relative w-full flex items-center justify-center" style="height:${headerHeight}px;">
-          <button onclick="deleteMilestone('${id}','${m.id}')" title="Remove milestone" class="absolute top-0 right-4 text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
-          <button onclick="toggleMilestone('${id}','${m.id}')" title="${status==='done' ? 'Mark as not done' : 'Mark as done'}" class="rounded-full flex items-center justify-center transition-shadow hover:shadow-md" style="width:28px; height:28px; ${circleStyle}">${innerHtml}</button>
+          ${deleteBtn}
+          ${circleHtml}
         </div>
         <div class="mt-1 text-center px-1">
           <div class="text-sm font-medium" style="color:${labelColor}">${m.label}</div>
@@ -2464,12 +2486,24 @@ function renderMilestones(id){
     `;
   }).join('');
 
-  timelineEl.innerHTML = `
-    <div class="relative" style="min-width:${sorted.length * nodeWidth}px;">
+  return `
+    <div class="relative" style="min-width:${rows.length * nodeWidth}px;">
       <div class="absolute" style="top:${lineCenter}px; left:${nodeWidth/2}px; right:${nodeWidth/2}px; height:2px; background:var(--line);"></div>
       <div class="flex items-start relative">${nodesHtml}</div>
     </div>
   `;
+}
+function renderMilestones(id){
+  const rows = (state.milestones && state.milestones[id]) || [];
+  const emptyEl = document.getElementById('milestone-empty');
+  const timelineEl = document.getElementById('milestone-timeline');
+  if(!timelineEl) return;
+  if(emptyEl) emptyEl.classList.toggle('hidden', rows.length>0);
+  timelineEl.classList.toggle('hidden', rows.length===0);
+  if(!rows.length){ timelineEl.innerHTML = ''; return; }
+
+  const sorted = rows.slice().sort((a,b)=>(a.targetDate||'').localeCompare(b.targetDate||''));
+  timelineEl.innerHTML = milestoneTimelineHtml(sorted, {interactive:true, projId:id});
 }
 function toggleMilestone(projId, milestoneId){
   const rows = state.milestones && state.milestones[projId];
@@ -2863,6 +2897,41 @@ function renderPortal(id){
   if(!p){ document.getElementById('portal-proj-name').textContent = 'Project not found'; return; }
   document.getElementById('portal-proj-name').textContent = p.name;
   document.getElementById('portal-proj-client').textContent = 'Prepared for ' + p.client;
+  const heroEl = document.getElementById('portal-hero');
+  if(heroEl) heroEl.style.backgroundImage = `url('${p.cover}')`;
+  const heroStatusEl = document.getElementById('portal-hero-status');
+  if(heroStatusEl){
+    heroStatusEl.textContent = p.status;
+    heroStatusEl.className = `tag ${statusTagClass(p.status)}`;
+    heroStatusEl.style.background = 'rgba(255,255,255,.92)';
+    heroStatusEl.style.backdropFilter = 'blur(4px)';
+  }
+
+  const milestones = (state.milestones && state.milestones[id]) || [];
+  const sortedMilestones = milestones.slice().sort((a,b)=>(a.targetDate||'').localeCompare(b.targetDate||''));
+  const doneCount = milestones.filter(m=>m.done).length;
+  const pendingApprovalsCount = (state.approvals[id]||[]).filter(a=>a.status==='pending').length;
+  const progressEl = document.getElementById('portal-progress');
+  if(progressEl){
+    const milestoneText = milestones.length ? `${doneCount} of ${milestones.length} complete` : 'No milestones yet';
+    progressEl.innerHTML = `
+      <span class="px-3 py-2 rounded-lg text-sm" style="background:#fff; border:1px solid var(--line); border-top:3px solid var(--terracotta);">
+        <span style="color:var(--ink-soft)">Milestones</span> <span class="font-semibold ml-1">${milestoneText}</span>
+      </span>
+      <span class="px-3 py-2 rounded-lg text-sm" style="background:#fff; border:1px solid var(--line); border-top:3px solid var(--amber);">
+        <span style="color:var(--ink-soft)">Approvals</span> <span class="font-semibold ml-1">${pendingApprovalsCount} pending</span>
+      </span>
+    `;
+  }
+
+  const milestoneTimelineEl = document.getElementById('portal-milestone-timeline');
+  const milestoneEmptyEl = document.getElementById('portal-milestone-empty');
+  if(milestoneTimelineEl && milestoneEmptyEl){
+    milestoneEmptyEl.classList.toggle('hidden', sortedMilestones.length>0);
+    milestoneTimelineEl.classList.toggle('hidden', sortedMilestones.length===0);
+    milestoneTimelineEl.innerHTML = milestoneTimelineHtml(sortedMilestones, {interactive:false});
+  }
+
   const clips = (state.clips[id]||[]).filter(c=>c.forClient);
   document.getElementById('portal-moodboard').innerHTML = clips.length ? clips.map(c=>`
     <div class="card overflow-hidden">
