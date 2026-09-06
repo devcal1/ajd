@@ -17,3 +17,4 @@ mobile tab-strip fix.
 Format below: `N. <gap closed> — <one-line result>`
 
 1. Custom task board (vision pillar: "managing tasks through custom boards") — new 10th "Board" tab, per-project user-defined columns + cards, move-via-dropdown, delete-guarded columns. Bug found+fixed: migration for old saves wasn't persisting new board state.
+2. Procurement/lead-time tracking (vision pillar: "tracking lead times") — FF&E items auto-capture orderDate/deliveredDate on status transitions; new cross-project "Procurement" view (on-order + recently-delivered lists, supplier avg lead time). Bug found+fixed: Delivered→Ordered→Delivered round-trip resurrected a stale deliveredDate instead of stamping fresh.

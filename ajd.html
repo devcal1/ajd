@@ -54,6 +54,7 @@
         <a href="#/" class="hover:text-[var(--ink)]">Projects</a>
         <a href="#/team" class="hover:text-[var(--ink)]">Team</a>
         <a href="#/calendar" class="hover:text-[var(--ink)]">Deadlines</a>
+        <a href="#/procurement" class="hover:text-[var(--ink)]">Procurement</a>
       </nav>
     </div>
   </header>
@@ -104,6 +105,29 @@
       </div>
       <div id="calendar-list" class="space-y-6"></div>
       <div id="calendar-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Procurement (cross-project) -->
+    <section data-route="procurement">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Procurement</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">FF&amp;E items on order and recently delivered, across all active projects</p>
+        </div>
+      </div>
+      <div id="procurement-supplier-leads" class="flex flex-wrap gap-2 mb-6 hidden"></div>
+      <div class="space-y-6">
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">On order</div>
+          <div id="procurement-on-order" class="space-y-2"></div>
+          <div id="procurement-on-order-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">Nothing on order right now.</div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Recently delivered</div>
+          <div id="procurement-delivered" class="space-y-2"></div>
+          <div id="procurement-delivered-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">Nothing delivered yet.</div>
+        </div>
+      </div>
     </section>
 
     <!-- Project detail -->
@@ -316,6 +340,14 @@
 <script>
 /* ---------- state ---------- */
 const STORAGE_KEY = 'ajd_state_v1';
+// YYYY-MM-DD string `n` days before today — used only to backfill realistic-looking
+// orderDate/deliveredDate values on seed data, relative to whenever the app first loads
+function seedDaysAgo(n){
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  const pad = x => String(x).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function seed(){
   return {
     projects: [
@@ -324,8 +356,9 @@ function seed(){
     ],
     ffe: {
       p1: [
-        {id:'f1', item:'Oak dining table', category:'Furniture', supplier:'Modern Times', qty:1, cost:4200, status:'Ordered'},
-        {id:'f2', item:'Pendant light — brass', category:'Lighting', supplier:'Articolo', qty:3, cost:1650, status:'Specified'}
+        {id:'f1', item:'Oak dining table', category:'Furniture', supplier:'Modern Times', qty:1, cost:4200, status:'Ordered', orderDate:seedDaysAgo(14), deliveredDate:null},
+        {id:'f2', item:'Pendant light — brass', category:'Lighting', supplier:'Articolo', qty:3, cost:1650, status:'Specified', orderDate:null, deliveredDate:null},
+        {id:'f3', item:'Rug — natural jute', category:'Soft furnishings', supplier:'Articolo', qty:1, cost:890, status:'Delivered', orderDate:seedDaysAgo(35), deliveredDate:seedDaysAgo(12)}
       ],
       p2: []
     },
@@ -422,6 +455,13 @@ function fmtShortDate(d){
   const dt = new Date(d + 'T00:00:00');
   return isNaN(dt.getTime()) ? d : dt.toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
 }
+// today as a YYYY-MM-DD string, in local time — matches the format used for every other
+// stored date (expectedDate, targetDate, dueDate, ...) so it compares/sorts consistently
+function todayISO(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function logActivity(projId, text){
   if(!state.activity) state.activity = {};
   if(!state.activity[projId]) state.activity[projId] = [];
@@ -488,6 +528,9 @@ function route(){
   } else if(h.startsWith('#/calendar')){
     document.querySelector('#shell [data-route="calendar"]').style.display='block';
     renderCalendar();
+  } else if(h.startsWith('#/procurement')){
+    document.querySelector('#shell [data-route="procurement"]').style.display='block';
+    renderProcurement();
   } else {
     document.querySelector('#shell [data-route="dashboard"]').style.display='block';
     renderDashboard();
@@ -752,6 +795,102 @@ function renderCalendar(){
     </div>
   `;
   listEl.innerHTML = [section('Overdue', overdue), section('This week', thisWeek), section('Later', later)].join('');
+}
+
+/* ---------- procurement (cross-project, read-only/derived) ---------- */
+// Splits every active project's FF&E rows into two buckets: items currently sitting on order
+// (status "Ordered" with an orderDate — the auto-capture in setFfeStatus guarantees one exists
+// whenever the status does) and items that have completed the order->delivery cycle (Delivered/
+// Installed with both dates present). Mirrors getDeadlineEntries/getTeamWorkload's pattern —
+// no new persisted state, computed fresh from state.ffe on every render.
+function getProcurementEntries(){
+  const onOrder = [];
+  const delivered = [];
+  const now = Date.now();
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.ffe[p.id]||[]).forEach(r=>{
+      if(r.status === 'Ordered' && r.orderDate){
+        const orderTime = new Date(r.orderDate + 'T00:00:00').getTime();
+        if(isNaN(orderTime)) return;
+        const daysOnOrder = Math.floor((now - orderTime) / 86400000);
+        let overdue = false;
+        if(r.expectedDate){
+          const expectedTime = new Date(r.expectedDate + 'T00:00:00').getTime();
+          overdue = !isNaN(expectedTime) && expectedTime < now;
+        }
+        onOrder.push({...r, projId:p.id, projName:p.name, daysOnOrder, overdue});
+      } else if((r.status === 'Delivered' || r.status === 'Installed') && r.orderDate && r.deliveredDate){
+        const orderTime = new Date(r.orderDate + 'T00:00:00').getTime();
+        const deliveredTime = new Date(r.deliveredDate + 'T00:00:00').getTime();
+        if(isNaN(orderTime) || isNaN(deliveredTime)) return;
+        const leadTimeDays = Math.max(0, Math.round((deliveredTime - orderTime) / 86400000));
+        delivered.push({...r, projId:p.id, projName:p.name, leadTimeDays});
+      }
+    });
+  });
+  onOrder.sort((a,b)=> (b.overdue - a.overdue) || (b.daysOnOrder - a.daysOnOrder));
+  delivered.sort((a,b)=> new Date(b.deliveredDate) - new Date(a.deliveredDate));
+  return {onOrder, delivered};
+}
+// average delivered lead time per supplier, drawn from the same delivered set
+// getProcurementEntries computes — a quick "who's fast, who's slow" glance for the top of the
+// Procurement page. Blank/placeholder ('—') suppliers are skipped since they aren't a real vendor.
+function getSupplierLeadTimes(){
+  const {delivered} = getProcurementEntries();
+  const bySupplier = {};
+  delivered.forEach(r=>{
+    const supplier = (r.supplier||'').trim();
+    if(!supplier || supplier === '—') return;
+    if(!bySupplier[supplier]) bySupplier[supplier] = {total:0, count:0};
+    bySupplier[supplier].total += r.leadTimeDays;
+    bySupplier[supplier].count++;
+  });
+  return Object.keys(bySupplier)
+    .map(supplier=>({supplier, avgDays: Math.round(bySupplier[supplier].total / bySupplier[supplier].count), count: bySupplier[supplier].count}))
+    .sort((a,b)=> b.count - a.count);
+}
+// single procurement row, shared by the "On order" and "Recently delivered" lists — `kind`
+// picks which date/metric column applies. Status text reuses ffeStatusSelectColors so the
+// coloring matches the FF&E table's own status pill; it's read-only here, no <select>.
+function procurementRowHtml(r, kind){
+  const c = ffeStatusSelectColors(r.status);
+  const dateLabel = kind === 'onOrder' ? 'Expected' : 'Delivered';
+  const dateValue = kind === 'onOrder' ? (r.expectedDate ? fmtShortDate(r.expectedDate) : '—') : fmtShortDate(r.deliveredDate);
+  const metric = kind === 'onOrder'
+    ? `${r.daysOnOrder} day${r.daysOnOrder===1?'':'s'} on order`
+    : `${r.leadTimeDays} day${r.leadTimeDays===1?'':'s'} lead time`;
+  return `
+    <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
+      <span class="flex-1 text-sm min-w-[140px] font-medium">${r.item}</span>
+      <a href="#/project/${r.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${r.projName}</a>
+      <span class="text-xs w-28 flex-shrink-0" style="color:var(--ink-soft)">${r.supplier||'—'}</span>
+      <span class="text-xs w-32 flex-shrink-0" style="color:var(--ink-soft)">Ordered ${fmtShortDate(r.orderDate)}</span>
+      <span class="text-xs w-36 flex-shrink-0" style="color:var(--ink-soft)">${dateLabel} ${dateValue}</span>
+      <span class="text-xs w-32 flex-shrink-0 font-semibold" style="color:${kind==='onOrder' && r.overdue ? 'var(--red)' : 'var(--ink-soft)'}">${metric}</span>
+      <span class="tag" style="background:${c.background}; color:${c.color}">${r.status}</span>
+      ${kind === 'onOrder' && r.overdue ? `<span class="tag tag-rejected">Overdue</span>` : ''}
+    </div>
+  `;
+}
+function renderProcurement(){
+  const onOrderList = document.getElementById('procurement-on-order');
+  const deliveredList = document.getElementById('procurement-delivered');
+  const onOrderEmpty = document.getElementById('procurement-on-order-empty');
+  const deliveredEmpty = document.getElementById('procurement-delivered-empty');
+  const supplierRow = document.getElementById('procurement-supplier-leads');
+  if(!onOrderList || !deliveredList) return;
+  const {onOrder, delivered} = getProcurementEntries();
+  const supplierLeads = getSupplierLeadTimes();
+  if(supplierRow){
+    supplierRow.classList.toggle('hidden', supplierLeads.length===0);
+    supplierRow.innerHTML = supplierLeads.map(s=>
+      `<span class="tag tag-status">${s.supplier} — avg ${s.avgDays}d (${s.count})</span>`
+    ).join('');
+  }
+  onOrderEmpty.classList.toggle('hidden', onOrder.length>0);
+  onOrderList.innerHTML = onOrder.map(r=>procurementRowHtml(r,'onOrder')).join('');
+  deliveredEmpty.classList.toggle('hidden', delivered.length>0);
+  deliveredList.innerHTML = delivered.map(r=>procurementRowHtml(r,'delivered')).join('');
 }
 
 function openNewProject(){
@@ -1313,12 +1452,33 @@ function ffeStatusSelectHtml(projId, r){
   const style = `background-color:${c.background}; color:${c.color}; background-image:url('${FFE_STATUS_CARET_URL}'); background-repeat:no-repeat; background-position:right 8px center; background-size:8px 8px; appearance:none; -webkit-appearance:none; -moz-appearance:none; border:none; padding-right:22px;`;
   return `<select onchange="updateFfeStatus('${projId}','${r.id}', this.value)" class="text-xs font-semibold rounded-full px-2 py-1" style="${style}">${options}</select>`;
 }
+// Sets an FF&E item's status and auto-captures the order/delivery dates that go with the
+// transition, so the dropdown (and a direct modal edit, which goes through this too) never
+// requires manually typing a date: stepping into "Ordered" stamps orderDate the first time
+// (and clears any deliveredDate — moving back to "Ordered" from Delivered/Installed means the
+// item is back on order, not delivered, so a stale deliveredDate can't linger and block the next
+// delivery from getting a fresh timestamp), stepping into "Delivered"/"Installed" stamps
+// deliveredDate the first time since it was cleared (an already-set date is left alone, e.g.
+// re-selecting the same status twice, or going Delivered->Installed), and stepping back to
+// "Specified" clears both — the item is back to square one.
+function setFfeStatus(r, status){
+  if(status === 'Ordered'){
+    if(!r.orderDate) r.orderDate = todayISO();
+    r.deliveredDate = null;
+  } else if((status === 'Delivered' || status === 'Installed') && !r.deliveredDate){
+    r.deliveredDate = todayISO();
+  } else if(status === 'Specified'){
+    r.orderDate = null;
+    r.deliveredDate = null;
+  }
+  r.status = status;
+}
 function updateFfeStatus(projId, itemId, status){
   const rows = state.ffe[projId];
   if(!rows) return;
   const r = rows.find(x=>x.id===itemId);
   if(!r) return;
-  r.status = status;
+  setFfeStatus(r, status);
   save(state);
   logActivity(projId, `${r.item} marked as ${status}`);
   renderFfe(projId);
@@ -1614,7 +1774,7 @@ function createFfe(id){
   const item = document.getElementById('nf-item').value.trim();
   if(!item){ toast('Item name required'); return; }
   const clipId = document.getElementById('nf-clip').value || null;
-  state.ffe[id].push({
+  const newItem = {
     id: uid('f'),
     item,
     room: document.getElementById('nf-room').value.trim() || null,
@@ -1622,10 +1782,13 @@ function createFfe(id){
     supplier: document.getElementById('nf-supplier').value.trim() || '—',
     qty: Number(document.getElementById('nf-qty').value) || 1,
     cost: Number(document.getElementById('nf-cost').value) || 0,
-    status: document.getElementById('nf-status').value,
+    orderDate: null,
+    deliveredDate: null,
     expectedDate: document.getElementById('nf-expected').value || null,
     clipId
-  });
+  };
+  setFfeStatus(newItem, document.getElementById('nf-status').value);
+  state.ffe[id].push(newItem);
   save(state); logActivity(id, `Added FF&E item: ${item}`); closeModal(); toast('Item added'); renderFfe(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
 }
 function editFfe(projId, itemId){
@@ -1676,7 +1839,7 @@ function saveFfe(projId, itemId){
   r.supplier = document.getElementById('nf-supplier').value.trim() || '—';
   r.qty = Number(document.getElementById('nf-qty').value) || 1;
   r.cost = Number(document.getElementById('nf-cost').value) || 0;
-  r.status = document.getElementById('nf-status').value;
+  setFfeStatus(r, document.getElementById('nf-status').value);
   r.expectedDate = document.getElementById('nf-expected').value || null;
   r.clipId = document.getElementById('nf-clip').value || null;
   save(state); closeModal(); toast('Item updated'); renderFfe(projId); renderNextActions(projId); renderProjectStats(projId);
