@@ -2191,7 +2191,9 @@ function requestedAgoHtml(a){
   const label = days === 0 ? 'Requested today' : `Requested ${days}d ago`;
   return `<p class="text-xs mt-1" style="color:var(--ink-soft)">${label}</p>`;
 }
-// compact "status by approvedBy on date" list for approvals with prior decisions
+// compact "status by approvedBy on date" list — a full ordered log of every decision made on this
+// approval, including the current/latest one (the card's own status tag will duplicate the last
+// entry here; that's expected).
 function approvalHistoryHtml(a){
   if(!a.history || !a.history.length) return '';
   return `
@@ -2199,9 +2201,12 @@ function approvalHistoryHtml(a){
       <p class="text-xs font-medium" style="color:var(--ink-soft)">History</p>
       <ul class="mt-1 space-y-1">
         ${a.history.map(h=>`
-          <li class="text-xs flex items-center gap-1.5" style="color:var(--ink-soft)">
-            <span class="tag tag-${h.status}" style="font-size:.65rem; padding:.1rem .4rem;">${h.status}</span>
-            <span>by ${h.approvedBy || '—'} on ${h.date || '—'}</span>
+          <li class="text-xs" style="color:var(--ink-soft)">
+            <div class="flex items-center gap-1.5">
+              <span class="tag tag-${h.status}" style="font-size:.65rem; padding:.1rem .4rem;">${h.status}</span>
+              <span>by ${h.approvedBy || '—'} on ${h.date || '—'}</span>
+            </div>
+            ${h.comment ? `<p class="mt-0.5 italic" style="color:var(--ink-soft)">"${h.comment}"</p>` : ''}
           </li>
         `).join('')}
       </ul>
@@ -2228,8 +2233,8 @@ function approvalCardHtml(id, a){
       </div>
       ${approvalHistoryHtml(a)}
       <div class="flex gap-2 mt-3">
-        ${a.status!=='approved' ? `<button onclick="designerDecide('${id}','${a.id}','approved')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
-        ${a.status!=='rejected' ? `<button onclick="designerDecide('${id}','${a.id}','rejected')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
+        ${a.status!=='approved' ? `<button onclick="promptApprovalDecision('${id}','${a.id}','approved','designer')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
+        ${a.status!=='rejected' ? `<button onclick="promptApprovalDecision('${id}','${a.id}','rejected','designer')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
       </div>
     </div>
   `;
@@ -2282,18 +2287,18 @@ function openNewApproval(){
 function createApproval(id){
   const title = document.getElementById('na-title').value.trim();
   if(!title){ toast('Title required'); return; }
-  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, history:[], requestedDate:new Date().toISOString().slice(0,10), clipId: document.getElementById('na-clip').value || null});
+  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, comment:null, history:[], requestedDate:new Date().toISOString().slice(0,10), clipId: document.getElementById('na-clip').value || null});
   save(state); logActivity(id, `Requested approval: ${title}`); closeModal(); toast('Approval requested'); renderApprovals(id); renderActivity(id);
 }
-// internal status change cannot fabricate client sign-off — only the client portal can set approvedBy:'client'
-function designerDecide(id, approvalId, status){
+// internal status change cannot fabricate client sign-off — only the client portal can set approvedBy:'client'.
+// history is a full ordered log of every decision (including this one) — pushed on every call, not
+// just prior states, so approvalHistoryHtml renders the complete trail.
+function designerDecide(id, approvalId, status, comment){
   const a = state.approvals[id].find(x=>x.id===approvalId);
   if(!a) return;
   if(!a.history) a.history = [];
-  if(a.status !== 'pending' || a.approvedBy){
-    a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date});
-  }
   a.status = status; a.approvedBy = 'designer'; a.date = new Date().toISOString().slice(0,10);
+  a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
   save(state); logActivity(id, `${a.title} status: ${status} by designer`); renderApprovals(id); renderActivity(id);
 }
 
@@ -3083,22 +3088,43 @@ function renderPortal(id){
       </div>
       ${approvalHistoryHtml(a)}
       <div class="flex gap-2 mt-3">
-        ${a.status!=='approved' ? `<button onclick="clientDecide('${id}','${a.id}','approved')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
-        ${a.status!=='rejected' ? `<button onclick="clientDecide('${id}','${a.id}','rejected')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
+        ${a.status!=='approved' ? `<button onclick="promptApprovalDecision('${id}','${a.id}','approved','client')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
+        ${a.status!=='rejected' ? `<button onclick="promptApprovalDecision('${id}','${a.id}','rejected','client')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
       </div>
     </div>
   `;
   }).join('') : `<p class="text-sm" style="color:var(--ink-soft)">Nothing pending.</p>`;
 }
-function clientDecide(id, approvalId, status){
+function clientDecide(id, approvalId, status, comment){
   const a = state.approvals[id].find(x=>x.id===approvalId);
   if(!a) return;
   if(!a.history) a.history = [];
-  if(a.status !== 'pending' || a.approvedBy){
-    a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date});
-  }
   a.status = status; a.approvedBy = 'client'; a.date = new Date().toISOString().slice(0,10);
+  a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
   save(state); logActivity(id, `${a.title} status: ${status} by client`); renderPortal(id); renderActivity(id);
+}
+// modal prompting for a decision comment; comment is required when rejecting, optional when approving
+function promptApprovalDecision(id, approvalId, status, actor){
+  const isReject = status === 'rejected';
+  const label = isReject ? 'Reason for requested changes (required)' : 'Note (optional)';
+  showModal(`
+    <h3 class="font-display text-xl mb-4">${isReject ? 'Request changes' : 'Approve'}</h3>
+    <div class="space-y-3">
+      <label class="text-xs font-medium" style="color:var(--ink-soft)">${label}</label>
+      <textarea id="ad-comment" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="3"></textarea>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="confirmApprovalDecision('${id}','${approvalId}','${status}','${actor}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Confirm</button>
+    </div>
+  `);
+}
+function confirmApprovalDecision(id, approvalId, status, actor){
+  const comment = document.getElementById('ad-comment').value.trim();
+  if(status === 'rejected' && !comment){ toast('A reason is required'); return; }
+  if(actor === 'client') clientDecide(id, approvalId, status, comment);
+  else designerDecide(id, approvalId, status, comment);
+  closeModal();
 }
 
 /* ---------- project header "More" menu ---------- */
