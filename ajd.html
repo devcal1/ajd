@@ -1568,7 +1568,7 @@ function openGlobalSearch(){
   showModal(`
     <h3 class="font-display text-xl mb-4">Search everything</h3>
     <div class="space-y-3">
-      <input id="gs-input" placeholder="Search FF&amp;E, clips, approvals, notes..." oninput="runGlobalSearch(this.value)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="gs-input" placeholder="Search FF&amp;E, clips, approvals, notes, board, tasks, contacts, comments..." oninput="runGlobalSearch(this.value)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <div id="gs-results" class="space-y-1 max-h-80 overflow-y-auto text-sm"></div>
     </div>
     <div class="flex justify-end gap-2 mt-5">
@@ -1605,6 +1605,26 @@ function runGlobalSearch(query){
     (state.notes[id]||[]).forEach(n=>{
       if((n.text||'').toLowerCase().includes(q)){
         hits.push({projId:id, label:`${p.name} — Note: ${n.text.slice(0,60)}${n.text.length>60?'…':''}`});
+      }
+    });
+    ((state.boards && state.boards[id] && state.boards[id].cards) || []).forEach(c=>{
+      if((c.title||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Board: ${c.title}`});
+      }
+    });
+    ((state.tradesTasks && state.tradesTasks[id]) || []).forEach(t=>{
+      if((t.task||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Task: ${t.task}`});
+      }
+    });
+    ((state.contacts && state.contacts[id]) || []).forEach(c=>{
+      if((c.name||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Contact: ${c.name}`});
+      }
+    });
+    ((state.comments && state.comments[id]) || []).forEach(cm=>{
+      if((cm.text||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Comment: ${cm.text.slice(0,60)}${cm.text.length>60?'…':''}`});
       }
     });
   });
