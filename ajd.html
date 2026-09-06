@@ -333,6 +333,21 @@
 
     <div id="portal-progress" class="flex flex-wrap items-center gap-2 mb-8"></div>
 
+    <h2 class="font-display text-xl mb-3">Product schedule</h2>
+    <div class="card overflow-x-auto mb-10">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left" style="color:var(--ink-soft)">
+            <th class="px-4 py-2 font-medium">Item</th>
+            <th class="px-4 py-2 font-medium">Category</th>
+            <th class="px-4 py-2 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody id="portal-ffe-tbody"></tbody>
+      </table>
+      <p id="portal-ffe-empty" class="hidden text-center py-6 text-sm" style="color:var(--ink-soft)">Nothing shared yet.</p>
+    </div>
+
     <h2 class="font-display text-xl mb-3">Progress</h2>
     <div id="portal-milestone-timeline" class="card p-6 overflow-x-auto mb-10 hidden"></div>
     <div id="portal-milestone-empty" class="hidden text-center py-10 text-sm mb-10" style="color:var(--ink-soft)">No milestones yet.</div>
@@ -1469,6 +1484,17 @@ function categoryChipHtml(category){
   const c = CATEGORY_CHIP_PALETTE[sum % CATEGORY_CHIP_PALETTE.length];
   return `<span class="tag" style="background:${c.background}; color:${c.color}">${label}</span>`;
 }
+// client-facing read-only row for the portal's "Product schedule" section: item name, category
+// chip, and a plain (non-editable) status tag — no cost/qty/supplier, ever, on the portal
+function portalFfeRowHtml(r){
+  return `
+    <tr class="border-t" style="border-color:var(--line)">
+      <td class="px-4 py-2">${r.item}</td>
+      <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
+      <td class="px-4 py-2"><span class="tag ${ffeStatusTagClass(r.status)}">${r.status}</span></td>
+    </tr>
+  `;
+}
 // colored initial-avatar chip for a person's name, hashed onto the same palette as category chips
 function personAvatarHtml(name){
   const label = name || '?';
@@ -1808,6 +1834,7 @@ function openNewFfe(){
       <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
         <option value="">No reference</option>${clipOptions}
       </select>
+      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox"> Show on client portal</label>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -1830,7 +1857,8 @@ function createFfe(id){
     orderDate: null,
     deliveredDate: null,
     expectedDate: document.getElementById('nf-expected').value || null,
-    clipId
+    clipId,
+    forClient: document.getElementById('nf-client').checked
   };
   setFfeStatus(newItem, document.getElementById('nf-status').value);
   state.ffe[id].push(newItem);
@@ -1864,6 +1892,7 @@ function editFfe(projId, itemId){
       <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
         <option value="">No reference</option>${clipOptions}
       </select>
+      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox" ${r.forClient?'checked':''}> Show on client portal</label>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -1887,6 +1916,7 @@ function saveFfe(projId, itemId){
   setFfeStatus(r, document.getElementById('nf-status').value);
   r.expectedDate = document.getElementById('nf-expected').value || null;
   r.clipId = document.getElementById('nf-clip').value || null;
+  r.forClient = document.getElementById('nf-client').checked;
   save(state); closeModal(); toast('Item updated'); renderFfe(projId); renderNextActions(projId); renderProjectStats(projId);
 }
 
@@ -2970,6 +3000,16 @@ function toggleTradeTask(id, taskId, checked){
 }
 
 /* ---------- client portal ---------- */
+// "Product schedule" section on the client portal: only items explicitly marked forClient,
+// shown as name/category/status only — never cost, qty, or supplier
+function renderPortalFfe(id){
+  const tbody = document.getElementById('portal-ffe-tbody');
+  const emptyEl = document.getElementById('portal-ffe-empty');
+  if(!tbody || !emptyEl) return;
+  const rows = (state.ffe[id]||[]).filter(r=>r.forClient);
+  emptyEl.classList.toggle('hidden', rows.length>0);
+  tbody.innerHTML = rows.map(r=>portalFfeRowHtml(r)).join('');
+}
 function renderPortal(id){
   const p = state.projects.find(x=>x.id===id);
   if(!p){ document.getElementById('portal-proj-name').textContent = 'Project not found'; return; }
@@ -3001,6 +3041,8 @@ function renderPortal(id){
       </span>
     `;
   }
+
+  renderPortalFfe(id);
 
   const milestoneTimelineEl = document.getElementById('portal-milestone-timeline');
   const milestoneEmptyEl = document.getElementById('portal-milestone-empty');
