@@ -60,6 +60,7 @@
         <a href="#/procurement" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Procurement</a>
         <a href="#/approvals" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
         <a href="#/budget" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Budget</a>
+        <a href="#/boards" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Boards</a>
       </nav>
     </div>
   </header>
@@ -167,6 +168,18 @@
       <div id="budget-summary-strip" class="flex flex-wrap gap-2 mb-6 hidden"></div>
       <div id="budget-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       <div id="budget-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Boards (cross-project) -->
+    <section data-route="boards">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Boards</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Task board activity across all active projects</p>
+        </div>
+      </div>
+      <div id="boards-list" class="space-y-4"></div>
+      <div id="boards-empty" class="hidden text-center py-16"></div>
     </section>
 
     <!-- Project detail -->
@@ -646,6 +659,9 @@ function route(){
   } else if(h.startsWith('#/budget')){
     document.querySelector('#shell [data-route="budget"]').style.display='block';
     renderBudget();
+  } else if(h.startsWith('#/boards')){
+    document.querySelector('#shell [data-route="boards"]').style.display='block';
+    renderBoardOverview();
   } else {
     document.querySelector('#shell [data-route="dashboard"]').style.display='block';
     renderDashboard();
@@ -919,7 +935,7 @@ function renderTeam(){
       ? `<span class="tag tag-rejected">${person.overdueTasks} overdue</span>`
       : (person.openTasks > 0 ? `<span class="tag tag-pending">${person.openTasks} open</span>` : '');
     const projectLinks = Array.from(person.projects.entries()).map(([pid,pname])=>
-      `<a href="#/project/${pid}" class="hover:text-[var(--terracotta-dark)]" style="text-decoration:underline; text-decoration-style:dotted;">${pname}</a>`
+      `<a href="#/project/${pid}" onclick="activeTab='ffe'" class="hover:text-[var(--terracotta-dark)]" style="text-decoration:underline; text-decoration-style:dotted;">${pname}</a>`
     ).join(', ') || '—';
     return `
     <div class="card p-4">
@@ -1002,7 +1018,7 @@ function deadlineEntryHtml(e){
       <div class="w-24 flex-shrink-0 text-xs font-semibold" style="color:${e.overdue ? 'var(--red)' : 'var(--ink-soft)'}">${fmtShortDate(e.date)}</div>
       ${categoryChipHtml(e.kind)}
       <span class="flex-1 text-sm min-w-[120px]">${e.label}</span>
-      <a href="#/project/${e.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${e.projName}</a>
+      <a href="#/project/${e.projId}" onclick="activeTab='ffe'" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${e.projName}</a>
       ${e.overdue ? `<span class="tag tag-rejected">Overdue</span>` : ''}
     </div>
   `;
@@ -1121,7 +1137,7 @@ function procurementRowHtml(r, kind){
   return `
     <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
       <span class="flex-1 text-sm min-w-[140px] font-medium">${r.item}</span>
-      <a href="#/project/${r.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${r.projName}</a>
+      <a href="#/project/${r.projId}" onclick="activeTab='ffe'" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${r.projName}</a>
       <span class="text-xs w-28 flex-shrink-0" style="color:var(--ink-soft)">${r.supplier||'—'}</span>
       <span class="text-xs w-32 flex-shrink-0" style="color:var(--ink-soft)">Ordered ${fmtShortDate(r.orderDate)}</span>
       <span class="text-xs w-36 flex-shrink-0" style="color:var(--ink-soft)">${dateLabel} ${dateValue}</span>
@@ -1253,7 +1269,7 @@ function approvalOverviewRowHtml(a){
   return `
     <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
       <span class="flex-1 text-sm min-w-[140px] font-medium">${a.title}</span>
-      <a href="#/project/${a.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${a.projName}</a>
+      <a href="#/project/${a.projId}" onclick="activeTab='approvals'" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${a.projName}</a>
       <span class="tag tag-${a.status}">${a.status}</span>
       ${pendingBadgeHtml(a)}
       ${requestedAgoHtml(a)}
@@ -1332,7 +1348,7 @@ function budgetCardHtml(e){
   return `
     <div class="card p-4">
       <div class="flex items-center justify-between mb-3 gap-2">
-        <a href="#/project/${e.id}" class="font-display text-lg truncate hover:text-[var(--terracotta-dark)]">${e.name}</a>
+        <a href="#/project/${e.id}" onclick="activeTab='ffe'" class="font-display text-lg truncate hover:text-[var(--terracotta-dark)]">${e.name}</a>
         ${overTag}
       </div>
       <div class="grid grid-cols-2 gap-3 text-sm mb-3">
@@ -1382,6 +1398,80 @@ function renderBudget(){
     `;
   }
   gridEl.innerHTML = entries.map(budgetCardHtml).join('');
+}
+
+/* ---------- board overview (cross-project, read-only/derived) ---------- */
+// Per-project task board activity across every active project that actually has a board with
+// cards — projects with no board or a board with zero cards are skipped entirely rather than
+// shown with all-zero counts (a board is created by default for every project, so "has a board"
+// alone isn't a useful signal). Mirrors getBudgetEntries/getTeamWorkload's pattern: no new
+// persisted state, computed fresh on every render, reusing isBoardCardOverdue for the overdue rule.
+function getBoardOverviewEntries(){
+  const entries = [];
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    const board = state.boards && state.boards[p.id];
+    if(!board || !board.cards || !board.cards.length) return;
+    const columns = board.columns || [];
+    const cards = board.cards;
+    const lastColId = columns.length ? columns[columns.length-1].id : null;
+    const total = cards.length;
+    const openCards = cards.filter(c=>c.columnId !== lastColId).length;
+    const overdueCards = cards.filter(c=>isBoardCardOverdue(c, columns));
+    const overdueList = overdueCards
+      .slice()
+      .sort((a,b)=> new Date(a.dueDate+'T00:00:00') - new Date(b.dueDate+'T00:00:00'))
+      .slice(0,5)
+      .map(c=>({title:c.title, dueDate:c.dueDate}));
+    entries.push({id:p.id, name:p.name, total, openCards, overdueCards: overdueCards.length, overdueList});
+  });
+  entries.sort((a,b)=>
+    (b.overdueCards - a.overdueCards) ||
+    (b.openCards - a.openCards) ||
+    a.name.localeCompare(b.name)
+  );
+  return entries;
+}
+// single project board-overview card — project name link, open/overdue badges, and (when there
+// are overdue cards) a short plain-text list of the soonest-due overdue cards, capped at 5.
+// Board cards aren't independently routable, so these rows are plain text, not links.
+function boardOverviewCardHtml(e){
+  const openBadge = `<span class="tag tag-status">${e.openCards} open</span>`;
+  const overdueBadge = e.overdueCards > 0 ? `<span class="tag tag-rejected">${e.overdueCards} overdue</span>` : '';
+  const overdueRows = e.overdueCards > 0
+    ? `<div class="mt-3 pt-3 space-y-1" style="border-top:1px solid var(--line)">${e.overdueList.map(c=>`
+        <div class="flex items-center justify-between gap-2 text-sm">
+          <span class="truncate">${c.title}</span>
+          <span class="text-xs flex-shrink-0" style="color:var(--red)">${fmtShortDate(c.dueDate)}</span>
+        </div>
+      `).join('')}</div>`
+    : '';
+  return `
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-2 gap-2">
+        <a href="#/project/${e.id}" onclick="activeTab='board'" class="font-display text-lg truncate hover:text-[var(--terracotta-dark)]">${e.name}</a>
+        <span class="flex items-center gap-2 flex-shrink-0">${openBadge}${overdueBadge}</span>
+      </div>
+      <div class="text-xs" style="color:var(--ink-soft)">${e.total} card${e.total===1?'':'s'} total</div>
+      ${overdueRows}
+    </div>
+  `;
+}
+function renderBoardOverview(){
+  const listEl = document.getElementById('boards-list');
+  const emptyEl = document.getElementById('boards-empty');
+  if(!listEl || !emptyEl) return;
+  const entries = getBoardOverviewEntries();
+  emptyEl.classList.toggle('hidden', entries.length>0);
+  if(!entries.length){
+    listEl.innerHTML = '';
+    emptyEl.className = 'text-center py-16';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No board activity yet</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">No active board cards across your projects yet.</p>
+    `;
+    return;
+  }
+  listEl.innerHTML = entries.map(boardOverviewCardHtml).join('');
 }
 
 // Confirmation modal before generating a PO for one supplier group: lists every item with its
