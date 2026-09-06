@@ -79,6 +79,10 @@
           <button onclick="openNewProject()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ New project</button>
         </div>
       </div>
+      <div id="attention-strip" class="hidden mb-5">
+        <div class="text-xs font-bold uppercase tracking-wider mb-2" style="color:var(--red)">Needs attention</div>
+        <div id="attention-list" class="space-y-2"></div>
+      </div>
       <div id="project-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       <div id="dashboard-empty" class="hidden"></div>
     </section>
@@ -620,7 +624,104 @@ function statusTagClass(status){
     default: return 'tag-status';
   }
 }
+// Cross-project attention digest for the dashboard — flat list of {projId, projName, kind,
+// count, label, onclickTab} entries, one per (project, kind) with a nonzero count. Reuses the
+// same overdue logic already used for per-project badges/digests (getNextActionItems,
+// pending-approval badges) and the existing cross-project aggregators (getDeadlineEntries,
+// getProcurementEntries) rather than recomputing overdue rules a third time. No new persisted
+// state — computed fresh on every render, same pattern as getTeamWorkload/getDeadlineEntries.
+const ATTENTION_KIND_ORDER = {approvals:0, deadlines:1, procurement:2, comments:3};
+function getAttentionItems(){
+  const items = [];
+  const activeProjects = state.projects.filter(p=>!p.archived);
+  const byId = {};
+  activeProjects.forEach(p=>{ byId[p.id] = p; });
+
+  // overdue approvals per project (same 5+-day-overdue rule as the dashboard card badge)
+  activeProjects.forEach(p=>{
+    const overdueCount = (state.approvals[p.id]||[]).filter(a=>{
+      if(a.status !== 'pending' || !a.requestedDate) return false;
+      const requested = new Date(a.requestedDate + 'T00:00:00');
+      if(isNaN(requested.getTime())) return false;
+      const days = Math.floor((Date.now() - requested.getTime()) / 86400000);
+      return days >= 5;
+    }).length;
+    if(overdueCount > 0){
+      items.push({projId:p.id, projName:p.name, kind:'approvals', count:overdueCount,
+        label:`${overdueCount} approval${overdueCount===1?'':'s'} overdue`, onclickTab:'approvals'});
+    }
+  });
+
+  // unread client comments per project
+  activeProjects.forEach(p=>{
+    const unread = getUnreadCommentCount(p.id);
+    if(unread > 0){
+      items.push({projId:p.id, projName:p.name, kind:'comments', count:unread,
+        label:`${unread} unread comment${unread===1?'':'s'}`, onclickTab:'comments'});
+    }
+  });
+
+  // overdue deadlines (FF&E deliveries, milestones, site tasks, board cards), grouped by project
+  const overdueDeadlinesByProj = {};
+  getDeadlineEntries().filter(e=>e.overdue).forEach(e=>{
+    overdueDeadlinesByProj[e.projId] = (overdueDeadlinesByProj[e.projId]||0) + 1;
+  });
+  Object.keys(overdueDeadlinesByProj).forEach(projId=>{
+    const p = byId[projId];
+    if(!p) return;
+    const count = overdueDeadlinesByProj[projId];
+    items.push({projId, projName:p.name, kind:'deadlines', count,
+      label:`${count} deadline${count===1?'':'s'} overdue`, onclickTab:null});
+  });
+
+  // overdue on-order procurement, grouped by project
+  const overdueProcurementByProj = {};
+  getProcurementEntries().onOrder.filter(r=>r.overdue).forEach(r=>{
+    overdueProcurementByProj[r.projId] = (overdueProcurementByProj[r.projId]||0) + 1;
+  });
+  Object.keys(overdueProcurementByProj).forEach(projId=>{
+    const p = byId[projId];
+    if(!p) return;
+    const count = overdueProcurementByProj[projId];
+    items.push({projId, projName:p.name, kind:'procurement', count,
+      label:`${count} item${count===1?'':'s'} overdue on order`, onclickTab:null});
+  });
+
+  items.sort((a,b)=>
+    (b.count - a.count) ||
+    (ATTENTION_KIND_ORDER[a.kind] - ATTENTION_KIND_ORDER[b.kind]) ||
+    a.projName.localeCompare(b.projName)
+  );
+  return items;
+}
+// single attention-strip row — a plain project link like the dashboard's other cross-project
+// lists (deadlineEntryHtml/procurement rows), plus setting activeTab before navigation so an
+// approvals/comments item opens the project on the right tab (setTab reads activeTab on the
+// renderProject call that follows the hash change). Deadline/procurement items span multiple
+// tabs so they always reset to the default FF&E tab instead of leaving activeTab (a module-level
+// global shared across every project) at whatever an earlier, unrelated attention click left it —
+// otherwise clicking an approval/comment item for one project and then a deadline/procurement
+// item for a different project would incorrectly reopen that other project on the stale tab.
+function attentionItemHtml(it){
+  const setTabAttr = ` onclick="activeTab='${it.onclickTab || 'ffe'}'"`;
+  return `
+    <a href="#/project/${it.projId}"${setTabAttr} class="card px-4 py-3 flex items-center gap-3 flex-wrap hover:shadow-md transition-shadow">
+      <span class="tag tag-rejected">${it.count}</span>
+      <span class="flex-1 text-sm min-w-[120px]">${it.label}</span>
+      <span class="text-xs" style="color:var(--ink-soft)">${it.projName}</span>
+    </a>
+  `;
+}
+function renderAttentionStrip(){
+  const strip = document.getElementById('attention-strip');
+  const listEl = document.getElementById('attention-list');
+  if(!strip || !listEl) return;
+  const items = getAttentionItems();
+  strip.classList.toggle('hidden', items.length===0);
+  listEl.innerHTML = items.map(attentionItemHtml).join('');
+}
 function renderDashboard(){
+  renderAttentionStrip();
   const grid = document.getElementById('project-grid');
   const searchInput = document.getElementById('dashboard-search');
   if(searchInput && searchInput.value !== dashboardFilter && document.activeElement !== searchInput){
