@@ -148,6 +148,7 @@
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="notes" onclick="setTab('notes')">Notes</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="board" onclick="setTab('board')">Board</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="activity" onclick="setTab('activity')">Activity</button>
         </div>
         <div class="pointer-events-none absolute left-0 top-0 bottom-2 w-6" style="background:linear-gradient(to right, var(--paper), transparent)"></div>
@@ -259,6 +260,13 @@
         <div id="site-task-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No site tasks yet.</div>
       </div>
 
+      <div id="tab-board" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewBoardColumn()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add column</button>
+        </div>
+        <div id="board-columns" class="flex gap-3 overflow-x-auto pb-2"></div>
+      </div>
+
       <div id="tab-activity" class="tab-pane hidden">
         <div id="activity-list" class="space-y-2"></div>
         <div id="activity-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No activity yet.</div>
@@ -365,8 +373,22 @@ function seed(){
     },
     // practice-wide hourly rates, keyed by person name — not per-project, since a
     // person's $/hr doesn't usually change project to project
-    rates: {}
+    rates: {},
+    // free-form kanban board per project: columns (ordered) + cards (columnId points into columns)
+    boards: {
+      p1: {columns: defaultBoardColumns(), cards: []},
+      p2: {columns: defaultBoardColumns(), cards: []}
+    }
   };
+}
+// fresh set of the 3 default columns for a new project's board — a new array/ids each call
+// so multiple projects don't share column identity
+function defaultBoardColumns(){
+  return [
+    {id: uid('bc'), name:'To Do'},
+    {id: uid('bc'), name:'In Progress'},
+    {id: uid('bc'), name:'Done'}
+  ];
 }
 function load(){
   try{
@@ -380,6 +402,10 @@ function load(){
 function save(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
 let state = load();
 if(!state.rates) state.rates = {}; // migrate state saved before hourly rates existed
+if(!state.boards) state.boards = {}; // migrate state saved before the board tab existed
+let boardsMigrated = false;
+state.projects.forEach(p=>{ if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; } });
+if(boardsMigrated) save(state); // persist migrated boards immediately so a reload before any board edit doesn't regenerate fresh column ids
 
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
 function toast(msg){
@@ -756,6 +782,8 @@ function createProject(){
   state.milestones[id] = [];
   if(!state.invoices) state.invoices = {};
   state.invoices[id] = {number:1, markupPct:0};
+  if(!state.boards) state.boards = {};
+  state.boards[id] = {columns: defaultBoardColumns(), cards: []};
   save(state); closeModal(); toast('Project created');
   renderDashboard();
 }
@@ -868,6 +896,7 @@ function deleteProject(id){
   if(state.contacts) delete state.contacts[id];
   if(state.milestones) delete state.milestones[id];
   if(state.invoices) delete state.invoices[id];
+  if(state.boards) delete state.boards[id];
   save(state);
   toast('Project deleted');
   location.hash = '#/';
@@ -1096,7 +1125,7 @@ function renderProject(id){
   setTab(activeTab);
   renderProjectStats(id);
   renderNextActions(id);
-  renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id);
+  renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id); renderBoard(id);
 }
 
 // stat pills below the hero banner — budget + FF&E spent (clickable to edit budget) and,
@@ -2490,6 +2519,132 @@ function deleteTradeTask(projId, taskId){
   renderActivity(projId);
   renderNextActions(projId);
   renderProjectStats(projId);
+}
+
+/* ---------- custom task board (kanban, separate from Site Tasks) ---------- */
+function renderBoard(id){
+  const mount = document.getElementById('board-columns');
+  if(!mount) return;
+  if(!state.boards) state.boards = {};
+  if(!state.boards[id]) state.boards[id] = {columns: defaultBoardColumns(), cards: []};
+  const board = state.boards[id];
+  const columns = board.columns || [];
+  const cards = board.cards || [];
+  mount.innerHTML = columns.map(col=>{
+    const colCards = cards.filter(c=>c.columnId===col.id);
+    return `
+    <div class="card p-3 flex-shrink-0" style="min-width:260px; width:260px;">
+      <div class="flex items-center justify-between mb-2 gap-2">
+        <span class="font-display text-base truncate">${col.name}</span>
+        <span class="flex items-center gap-2 flex-shrink-0">
+          <span class="tag tag-status">${colCards.length}</span>
+          <button onclick="deleteBoardColumn('${id}','${col.id}')" title="Delete column" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+        </span>
+      </div>
+      <div class="space-y-2 mb-2">${colCards.map(c=>boardCardHtml(id, c, columns)).join('')}</div>
+      <button onclick="openNewBoardCard('${col.id}')" class="btn-ghost w-full px-3 py-1.5 rounded-lg text-xs font-semibold">+ Add card</button>
+    </div>
+  `;
+  }).join('');
+}
+// single board card — title, a move-to-column select, and a delete button
+function boardCardHtml(id, card, columns){
+  const options = columns.map(col=>`<option value="${col.id}" ${col.id===card.columnId?'selected':''}>${col.name}</option>`).join('');
+  return `
+    <div class="rounded-lg p-2 text-sm" style="background:var(--paper-2); border:1px solid var(--line);">
+      <div class="flex items-start justify-between gap-2">
+        <span class="flex-1">${card.title}</span>
+        <button onclick="deleteBoardCard('${id}','${card.id}')" title="Remove card" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+      </div>
+      <select onchange="moveBoardCard('${id}','${card.id}', this.value)" class="w-full mt-2 border rounded-lg px-2 py-1 text-xs" style="border-color:var(--line)">
+        ${options}
+      </select>
+    </div>
+  `;
+}
+function openNewBoardColumn(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add column</h3>
+    <div class="space-y-3">
+      <input id="bc-name" placeholder="Column name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createBoardColumn('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createBoardColumn(id){
+  const name = document.getElementById('bc-name').value.trim();
+  if(!name){ toast('Column name required'); return; }
+  if(!state.boards) state.boards = {};
+  if(!state.boards[id]) state.boards[id] = {columns: defaultBoardColumns(), cards: []};
+  state.boards[id].columns.push({id: uid('bc'), name});
+  save(state);
+  logActivity(id, `Added board column: ${name}`);
+  closeModal(); toast('Column added');
+  renderBoard(id); renderActivity(id);
+}
+function deleteBoardColumn(projId, colId){
+  const board = state.boards && state.boards[projId];
+  if(!board) return;
+  const hasCards = (board.cards||[]).some(c=>c.columnId===colId);
+  if(hasCards){ toast('Move or delete cards in this column first'); return; }
+  const idx = board.columns.findIndex(c=>c.id===colId);
+  if(idx === -1) return;
+  const removedName = board.columns[idx].name;
+  board.columns.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed board column: ${removedName}`);
+  renderBoard(projId); renderActivity(projId);
+}
+function openNewBoardCard(colId){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add card</h3>
+    <div class="space-y-3">
+      <input id="bd-title" placeholder="Card title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createBoardCard('${id}','${colId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createBoardCard(id, colId){
+  const title = document.getElementById('bd-title').value.trim();
+  if(!title){ toast('Card title required'); return; }
+  if(!state.boards) state.boards = {};
+  if(!state.boards[id]) state.boards[id] = {columns: defaultBoardColumns(), cards: []};
+  state.boards[id].cards.push({id: uid('bd'), columnId: colId, title, createdAt: new Date().toISOString()});
+  save(state);
+  logActivity(id, `Added board card: ${title}`);
+  closeModal(); toast('Card added');
+  renderBoard(id); renderActivity(id);
+}
+function moveBoardCard(id, cardId, newColId){
+  const board = state.boards && state.boards[id];
+  if(!board) return;
+  const card = board.cards.find(c=>c.id===cardId);
+  if(!card) return;
+  const fromCol = board.columns.find(c=>c.id===card.columnId);
+  const toCol = board.columns.find(c=>c.id===newColId);
+  card.columnId = newColId;
+  save(state);
+  logActivity(id, `Moved card "${card.title}" from ${fromCol?fromCol.name:'?'} to ${toCol?toCol.name:'?'}`);
+  renderBoard(id); renderActivity(id);
+}
+function deleteBoardCard(projId, cardId){
+  const board = state.boards && state.boards[projId];
+  if(!board) return;
+  const idx = board.cards.findIndex(c=>c.id===cardId);
+  if(idx === -1) return;
+  const removedTitle = board.cards[idx].title;
+  board.cards.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed board card: ${removedTitle}`);
+  renderBoard(projId); renderActivity(projId);
 }
 
 /* ---------- job-site (trades) view ---------- */
