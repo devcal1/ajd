@@ -1926,6 +1926,17 @@ function updateFfeStatus(projId, itemId, status){
   renderProjectStats(projId);
 }
 // single FF&E row <tr>, shared by the flat table and the grouped-by-room view
+// small status tag for the FF&E row of an item that has a linked approval — looks up the
+// first approval (in creation order) whose ffeItemId matches this item's id, and returns ''
+// when there is none so items with no linked approval render no badge at all.
+function ffeApprovalBadgeHtml(id, itemId){
+  const approval = (state.approvals[id]||[]).find(a=>a.ffeItemId === itemId);
+  if(!approval) return '';
+  const style = 'font-size:.65rem; padding:.1rem .4rem;';
+  if(approval.status === 'approved') return `<span class="tag tag-approved" style="${style}" title="Client approved">&#10003; Approved</span>`;
+  if(approval.status === 'rejected') return `<span class="tag tag-rejected" style="${style}" title="Client requested changes">Changes requested</span>`;
+  return `<span class="tag tag-pending" style="${style}" title="Approval pending">Pending</span>`;
+}
 function ffeRowHtml(id, r, idx, clips){
   const clip = r.clipId ? clips.find(c=>c.id===r.clipId) : null;
   const thumb = clip
@@ -1954,7 +1965,7 @@ function ffeRowHtml(id, r, idx, clips){
   ].filter(Boolean).join('');
   return `
     <tr class="border-t" style="border-color:var(--line); ${rowBg}">
-      <td class="px-4 py-2">${caret}${thumb}${r.item}</td>
+      <td class="px-4 py-2">${caret}${thumb}${r.item} ${ffeApprovalBadgeHtml(id, r.id)}</td>
       <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
       <td class="px-4 py-2" style="color:var(--ink-soft)">${r.supplier}</td>
       <td class="px-4 py-2">${r.qty}</td>
@@ -2675,6 +2686,8 @@ function openNewApproval(){
   const id = currentProjectId();
   const clips = state.clips[id] || [];
   const clipOptions = clips.map(c=>`<option value="${c.id}">${c.title}</option>`).join('');
+  const ffeItems = state.ffe[id] || [];
+  const ffeOptions = ffeItems.map(r=>`<option value="${r.id}">${r.item}</option>`).join('');
   showModal(`
     <h3 class="font-display text-xl mb-4">Request approval</h3>
     <div class="space-y-3">
@@ -2682,6 +2695,9 @@ function openNewApproval(){
       <textarea id="na-desc" placeholder="Description" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="3"></textarea>
       <select id="na-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
         <option value="">No visual reference</option>${clipOptions}
+      </select>
+      <select id="na-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">No linked FF&amp;E item</option>${ffeOptions}
       </select>
     </div>
     <div class="flex justify-end gap-2 mt-5">
@@ -2693,8 +2709,8 @@ function openNewApproval(){
 function createApproval(id){
   const title = document.getElementById('na-title').value.trim();
   if(!title){ toast('Title required'); return; }
-  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, comment:null, history:[], requestedDate:new Date().toISOString().slice(0,10), clipId: document.getElementById('na-clip').value || null});
-  save(state); logActivity(id, `Requested approval: ${title}`); closeModal(); toast('Approval requested'); renderApprovals(id); renderActivity(id);
+  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, comment:null, history:[], requestedDate:new Date().toISOString().slice(0,10), clipId: document.getElementById('na-clip').value || null, ffeItemId: document.getElementById('na-ffe').value || null});
+  save(state); logActivity(id, `Requested approval: ${title}`); closeModal(); toast('Approval requested'); renderApprovals(id); renderActivity(id); renderFfe(id);
 }
 // internal status change cannot fabricate client sign-off — only the client portal can set approvedBy:'client'.
 // history is a full ordered log of every decision (including this one) — pushed on every call, not
@@ -2705,7 +2721,7 @@ function designerDecide(id, approvalId, status, comment){
   if(!a.history) a.history = [];
   a.status = status; a.approvedBy = 'designer'; a.date = new Date().toISOString().slice(0,10);
   a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
-  save(state); logActivity(id, `${a.title} status: ${status} by designer`); renderApprovals(id); renderActivity(id);
+  save(state); logActivity(id, `${a.title} status: ${status} by designer`); renderApprovals(id); renderActivity(id); renderFfe(id);
 }
 
 // Notes tab: was flat white cards with the date buried as tiny gray text below the body,
@@ -3706,7 +3722,7 @@ function clientDecide(id, approvalId, status, comment){
   if(!a.history) a.history = [];
   a.status = status; a.approvedBy = 'client'; a.date = new Date().toISOString().slice(0,10);
   a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
-  save(state); logActivity(id, `${a.title} status: ${status} by client`); renderPortal(id); renderActivity(id);
+  save(state); logActivity(id, `${a.title} status: ${status} by client`); renderPortal(id); renderActivity(id); renderFfe(id);
 }
 // modal prompting for a decision comment; comment is required when rejecting, optional when approving
 function promptApprovalDecision(id, approvalId, status, actor){
