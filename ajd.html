@@ -58,6 +58,7 @@
         <a href="#/team" class="hover:text-[var(--ink)]">Team</a>
         <a href="#/calendar" class="hover:text-[var(--ink)]">Deadlines</a>
         <a href="#/procurement" class="hover:text-[var(--ink)]">Procurement</a>
+        <a href="#/approvals" class="hover:text-[var(--ink)]">Approvals</a>
       </nav>
     </div>
   </header>
@@ -140,6 +141,18 @@
           <div id="procurement-delivered-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">Nothing delivered yet.</div>
         </div>
       </div>
+    </section>
+
+    <!-- Approvals (cross-project) -->
+    <section data-route="approvals">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Approvals</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Client sign-off requests across all active projects</p>
+        </div>
+      </div>
+      <div id="approvals-list" class="space-y-6"></div>
+      <div id="approvals-empty" class="hidden text-center py-16"></div>
     </section>
 
     <!-- Project detail -->
@@ -613,6 +626,9 @@ function route(){
   } else if(h.startsWith('#/procurement')){
     document.querySelector('#shell [data-route="procurement"]').style.display='block';
     renderProcurement();
+  } else if(h.startsWith('#/approvals')){
+    document.querySelector('#shell [data-route="approvals"]').style.display='block';
+    renderApprovalsOverview();
   } else {
     document.querySelector('#shell [data-route="dashboard"]').style.display='block';
     renderDashboard();
@@ -1162,6 +1178,82 @@ function renderProcurement(){
   onOrderList.innerHTML = onOrder.map(r=>procurementRowHtml(r,'onOrder')).join('');
   deliveredEmpty.classList.toggle('hidden', delivered.length>0);
   deliveredList.innerHTML = delivered.map(r=>procurementRowHtml(r,'delivered')).join('');
+}
+
+/* ---------- approvals overview (cross-project, read-only) ---------- */
+// Every approval (any status) across all active projects, newest requestedDate concerns aside —
+// sorted oldest-requested-first so the most-overdue pending ones surface at the top of their
+// group. Missing requestedDate (pre-existing seed data) sorts as if it were the oldest possible
+// request, same "treat missing as least-recent" fallback used elsewhere (pendingBadgeHtml etc.
+// treat a missing requestedDate as "just requested" for badge purposes, but for ordering here we
+// want it first, not last, since we can't tell how old it really is). Mirrors getProcurementEntries'
+// read-only/derived pattern — no new persisted state.
+function getApprovalEntries(){
+  const entries = [];
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.approvals[p.id]||[]).forEach(a=>{
+      entries.push({...a, projId:p.id, projName:p.name, drift: ffeApprovalDrift(p.id, a)});
+    });
+  });
+  entries.sort((a,b)=>{
+    const ta = a.requestedDate ? new Date(a.requestedDate + 'T00:00:00').getTime() : 0;
+    const tb = b.requestedDate ? new Date(b.requestedDate + 'T00:00:00').getTime() : 0;
+    return ta - tb;
+  });
+  return entries;
+}
+// single flat approval row for the cross-project overview — mirrors procurementRowHtml's visual
+// style (not the tall Kanban card from approvalCardHtml, which is per-project and interactive).
+// Read-only: no approve/reject actions here, just the title, project link, status and any
+// spec-drift warning.
+function approvalOverviewRowHtml(a){
+  const driftHtml = a.ffeItemId
+    ? (a.drift.length
+        ? `<span class="tag tag-pending" style="font-size:.65rem; padding:.1rem .4rem;" title="Changed since approval: ${a.drift.join(', ')}">&#9888; Spec changed since approval</span>`
+        : `<span class="tag tag-status" style="font-size:.65rem; padding:.1rem .4rem;">Linked to FF&amp;E</span>`)
+    : '';
+  return `
+    <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
+      <span class="flex-1 text-sm min-w-[140px] font-medium">${a.title}</span>
+      <a href="#/project/${a.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${a.projName}</a>
+      <span class="tag tag-${a.status}">${a.status}</span>
+      ${pendingBadgeHtml(a)}
+      ${requestedAgoHtml(a)}
+      ${driftHtml}
+    </div>
+  `;
+}
+function renderApprovalsOverview(){
+  const listEl = document.getElementById('approvals-list');
+  const emptyEl = document.getElementById('approvals-empty');
+  if(!listEl || !emptyEl) return;
+  const entries = getApprovalEntries();
+  emptyEl.classList.toggle('hidden', entries.length>0);
+  if(!entries.length){
+    listEl.innerHTML = '';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No approvals yet</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">No approval requests across active projects yet.</p>
+    `;
+    return;
+  }
+  const pending = entries.filter(a=>a.status==='pending');
+  const approved = entries.filter(a=>a.status==='approved');
+  const rejected = entries.filter(a=>a.status==='rejected');
+  const section = (title, tagClass, rows) => !rows.length ? '' : `
+    <div>
+      <div class="flex items-center gap-2 mb-2">
+        <div class="text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft)">${title}</div>
+        <span class="tag ${tagClass}">${rows.length}</span>
+      </div>
+      <div class="space-y-2">${rows.map(approvalOverviewRowHtml).join('')}</div>
+    </div>
+  `;
+  listEl.innerHTML = [
+    section('Pending', 'tag-pending', pending),
+    section('Approved', 'tag-approved', approved),
+    section('Rejected', 'tag-rejected', rejected)
+  ].join('');
 }
 
 // Confirmation modal before generating a PO for one supplier group: lists every item with its
