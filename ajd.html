@@ -1,0 +1,2620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Practice Manager</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#2b2622;
+    --ink-soft:#5c554d;
+    --paper:#faf6f1;
+    --paper-2:#f2ece3;
+    --terracotta:#c1613f;
+    --terracotta-dark:#a24e30;
+    --terracotta-soft:#f1ddd2;
+    --line:#e4d9cc;
+    --green:#6b7d5a;
+    --amber:#c98a2c;
+    --red:#b3462c;
+  }
+  *{font-family:'Inter',sans-serif;}
+  .font-display{font-family:'Fraunces',serif;}
+  body{background:var(--paper); color:var(--ink);}
+  .card{background:#fff; border:1px solid var(--line); border-radius:14px;}
+  .tag{display:inline-flex; align-items:center; gap:.25rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:999px;}
+  .tag-pending{background:#fbf0dd; color:var(--amber);}
+  .tag-approved{background:#e9efe4; color:var(--green);}
+  .tag-rejected{background:#f7e3dc; color:var(--red);}
+  .tag-status{background:var(--paper-2); color:var(--ink-soft);}
+  .btn-primary{background:var(--terracotta); color:#fff;}
+  .btn-primary:hover{background:var(--terracotta-dark);}
+  .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink);}
+  .btn-ghost:hover{background:var(--paper-2);}
+  ::-webkit-scrollbar{width:10px; height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;}
+  .tab-active{border-bottom:2px solid var(--terracotta); color:var(--ink); font-weight:600;}
+  .tab-inactive{border-bottom:2px solid transparent; color:var(--ink-soft);}
+  [data-route]{display:none;}
+  .toast{position:fixed; bottom:1.25rem; right:1.25rem; z-index:50; background:var(--ink); color:#fff; padding:.65rem 1rem; border-radius:10px; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.18); opacity:0; transform:translateY(8px); transition:.2s;}
+  .toast.show{opacity:1; transform:translateY(0);}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============ APP SHELL (dashboard + project view) ============ -->
+<div id="shell" data-route="shell">
+  <header class="border-b" style="border-color:var(--line); background:#fff;">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="#/" class="font-display text-2xl tracking-tight" style="color:var(--terracotta-dark)">AJD</a>
+      <nav class="text-sm font-medium flex gap-6" style="color:var(--ink-soft)">
+        <a href="#/" class="hover:text-[var(--ink)]">Projects</a>
+        <a href="#/team" class="hover:text-[var(--ink)]">Team</a>
+        <a href="#/calendar" class="hover:text-[var(--ink)]">Deadlines</a>
+      </nav>
+    </div>
+  </header>
+  <main class="max-w-6xl mx-auto px-6 py-8">
+
+    <!-- Dashboard -->
+    <section data-route="dashboard">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Projects</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Active interior design engagements</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <input id="dashboard-search" placeholder="Search projects..." oninput="filterDashboard(this.value)" class="border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          <label class="text-sm flex items-center gap-2" style="color:var(--ink-soft)">
+            <input id="dashboard-show-archived" type="checkbox" onchange="toggleShowArchived(this.checked)"> Show archived
+          </label>
+          <button onclick="openGlobalSearch()" class="btn-ghost px-3 py-2 rounded-lg text-sm font-medium">Search everything</button>
+          <button onclick="exportAllData()" class="btn-ghost px-3 py-2 rounded-lg text-sm font-medium">Export data</button>
+          <button onclick="openImportData()" class="btn-ghost px-3 py-2 rounded-lg text-sm font-medium">Import data</button>
+          <input id="import-file-input" type="file" accept="application/json" class="hidden" onchange="handleImportFile(this.files[0])">
+          <button onclick="openNewProject()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ New project</button>
+        </div>
+      </div>
+      <div id="project-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="dashboard-empty" class="hidden"></div>
+    </section>
+
+    <!-- Team workload (cross-project) -->
+    <section data-route="team">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Team</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Workload across all active projects</p>
+        </div>
+      </div>
+      <div id="team-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="team-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Deadlines calendar (cross-project) -->
+    <section data-route="calendar">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Deadlines</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">FF&amp;E deliveries, milestones and site tasks across all active projects</p>
+        </div>
+      </div>
+      <div id="calendar-list" class="space-y-6"></div>
+      <div id="calendar-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Project detail -->
+    <section data-route="project">
+      <a href="#/" class="text-sm inline-flex items-center gap-1 mb-4" style="color:var(--ink-soft)">&larr; All projects</a>
+
+      <div id="proj-hero" class="relative rounded-2xl overflow-hidden mb-3 bg-cover bg-center" style="height:140px; background-color:var(--paper-2);">
+        <div class="absolute inset-0" style="background:linear-gradient(to top, rgba(0,0,0,.68) 0%, rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 100%);"></div>
+        <div class="absolute top-3 left-3 flex items-center gap-2">
+          <a id="proj-trades-link" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-medium" style="background:rgba(255,255,255,.92); border-color:transparent;" target="_blank">Job-site view ↗</a>
+          <a id="proj-portal-link" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-medium" style="background:rgba(255,255,255,.92); border-color:transparent;" target="_blank">Client portal ↗</a>
+        </div>
+        <div class="absolute top-3 right-3 flex items-center gap-2">
+          <span id="proj-hero-status" class="tag" style="background:rgba(255,255,255,.92); backdrop-filter:blur(4px);"></span>
+          <div class="relative">
+            <button onclick="toggleProjectMoreMenu(event)" class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-medium" style="background:rgba(255,255,255,.92); border-color:transparent;">More ▾</button>
+            <div id="proj-more-menu" class="hidden card shadow-lg absolute right-0 top-full mt-1 w-52 py-1 z-10">
+              <button onclick="printProjectSummary(currentProjectId()); closeProjectMoreMenu();" class="w-full text-left px-3 py-2 text-sm hover:bg-[var(--paper-2)]">Print summary</button>
+              <button onclick="exportInvoice(currentProjectId()); closeProjectMoreMenu();" class="w-full text-left px-3 py-2 text-sm hover:bg-[var(--paper-2)]">Export invoice</button>
+              <button id="proj-archive-btn" onclick="toggleArchiveProject(currentProjectId()); closeProjectMoreMenu();" class="w-full text-left px-3 py-2 text-sm hover:bg-[var(--paper-2)]"></button>
+              <button id="proj-delete-btn" onclick="deleteProject(currentProjectId()); closeProjectMoreMenu();" class="hidden w-full text-left px-3 py-2 text-sm hover:bg-[var(--paper-2)]" style="color:var(--red)">Delete project</button>
+            </div>
+          </div>
+        </div>
+        <div class="absolute left-4 right-4 bottom-3">
+          <h1 id="proj-name" class="font-display text-3xl text-white leading-tight" style="text-shadow:0 1px 6px rgba(0,0,0,.45)"></h1>
+          <p id="proj-client" class="text-sm mt-0.5" style="color:rgba(255,255,255,.88); text-shadow:0 1px 4px rgba(0,0,0,.45)"></p>
+        </div>
+      </div>
+
+      <div id="proj-stats" class="flex flex-wrap items-center gap-2 mb-4"></div>
+
+      <div id="next-actions" class="mb-2"></div>
+
+      <div class="relative mt-6 mb-6">
+        <div id="tab-strip" class="flex gap-6 flex-nowrap overflow-x-auto border-b" style="border-color:var(--line)">
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="ffe" onclick="setTab('ffe')">FF&amp;E Schedule</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="time" onclick="setTab('time')">Time Tracking</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="clipper" onclick="setTab('clipper')">Web Clipper</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="approvals" onclick="setTab('approvals')">Approvals</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="milestones" onclick="setTab('milestones')">Milestones</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="notes" onclick="setTab('notes')">Notes</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="activity" onclick="setTab('activity')">Activity</button>
+        </div>
+        <div class="pointer-events-none absolute left-0 top-0 bottom-2 w-6" style="background:linear-gradient(to right, var(--paper), transparent)"></div>
+        <div class="pointer-events-none absolute right-0 top-0 bottom-2 w-6" style="background:linear-gradient(to left, var(--paper), transparent)"></div>
+      </div>
+
+      <div id="tab-ffe" class="tab-pane">
+        <div class="flex items-center justify-between mb-3">
+          <div class="min-w-[220px]">
+            <div id="ffe-budget-summary" class="text-sm font-medium"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="ffe-search" placeholder="Search items..." oninput="filterFfe(this.value)" class="border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+            <button id="ffe-group-room-btn" onclick="toggleFfeGroupByRoom()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm font-semibold">Group by room</button>
+            <button onclick="exportFfeCsv(currentProjectId())" class="btn-ghost px-3 py-1.5 rounded-lg text-sm font-semibold">Export CSV</button>
+            <button onclick="openNewFfe()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add item</button>
+          </div>
+        </div>
+        <div class="card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left" style="background:var(--paper-2); color:var(--ink-soft)">
+                <th class="px-4 py-2 font-medium">Item</th>
+                <th id="ffe-category-th" onclick="toggleFfeCategorySort()" class="px-4 py-2 font-medium cursor-pointer select-none" title="Sort by category"></th>
+                <th class="px-4 py-2 font-medium">Supplier</th>
+                <th class="px-4 py-2 font-medium">Qty</th>
+                <th class="px-4 py-2 font-medium">Cost</th>
+                <th class="px-4 py-2 font-medium">Status</th>
+                <th class="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="ffe-tbody"></tbody>
+            <tfoot id="ffe-tfoot"></tfoot>
+          </table>
+          <div id="ffe-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No FF&amp;E items yet — add the first one.</div>
+        </div>
+      </div>
+
+      <div id="tab-time" class="tab-pane hidden">
+        <div class="flex items-center justify-end gap-2 mb-3">
+          <button onclick="exportTimeCsv(currentProjectId())" class="btn-ghost px-3 py-1.5 rounded-lg text-sm font-semibold">Export CSV</button>
+          <button onclick="openNewTime()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Log time</button>
+        </div>
+        <div id="time-by-person" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left" style="background:var(--paper-2); color:var(--ink-soft)">
+                <th class="px-4 py-2 font-medium">Date</th>
+                <th class="px-4 py-2 font-medium">Person</th>
+                <th class="px-4 py-2 font-medium">Hours</th>
+                <th class="px-4 py-2 font-medium">Note</th>
+                <th class="px-4 py-2 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="time-tbody"></tbody>
+          </table>
+          <div id="time-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No time logged yet.</div>
+        </div>
+        <div class="text-right mt-3 text-sm font-semibold" id="time-total"></div>
+      </div>
+
+      <div id="tab-clipper" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewClip()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Save clip</button>
+        </div>
+        <div id="clip-grid" class="columns-2 sm:columns-3 lg:columns-4 gap-4"></div>
+        <div id="clip-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No clips saved yet — paste a URL and image to start a moodboard.</div>
+      </div>
+
+      <div id="tab-approvals" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewApproval()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Request approval</button>
+        </div>
+        <div id="approval-list" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
+        <div id="approval-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No approvals requested yet.</div>
+      </div>
+
+      <div id="tab-milestones" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewMilestone()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add milestone</button>
+        </div>
+        <div id="milestone-timeline" class="card p-6 overflow-x-auto hidden"></div>
+        <div id="milestone-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No milestones yet.</div>
+      </div>
+
+      <div id="tab-notes" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewNote()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add note</button>
+        </div>
+        <div id="note-list" class="space-y-3"></div>
+        <div id="note-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No notes yet.</div>
+      </div>
+
+      <div id="tab-contacts" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewContact()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add contact</button>
+        </div>
+        <div id="contact-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        <div id="contact-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No contacts yet — add a supplier or trade.</div>
+      </div>
+
+      <div id="tab-tasks" class="tab-pane hidden">
+        <div class="flex justify-end mb-3">
+          <button onclick="openNewTradeTask()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add task</button>
+        </div>
+        <div id="site-task-progress" class="mb-3"></div>
+      <div id="site-task-list" class="space-y-2"></div>
+        <div id="site-task-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No site tasks yet.</div>
+      </div>
+
+      <div id="tab-activity" class="tab-pane hidden">
+        <div id="activity-list" class="space-y-2"></div>
+        <div id="activity-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No activity yet.</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ JOB-SITE VIEW (standalone, bypasses shell) ============ -->
+<div id="trades-view" data-route="trades" class="min-h-screen" style="background:var(--ink)">
+  <div class="max-w-md mx-auto px-4 py-6 text-white">
+    <div class="flex items-center justify-between mb-6">
+      <span class="font-display text-xl">AJD Job Site</span>
+      <span class="tag tag-status" style="background:rgba(255,255,255,.12); color:#fff">Trade access</span>
+    </div>
+    <h1 id="trades-proj-name" class="font-display text-2xl mb-1"></h1>
+    <p class="text-sm opacity-70 mb-6">Site tasks — no login required, share this link with trades.</p>
+    <div id="trades-list" class="space-y-3"></div>
+  </div>
+</div>
+
+<!-- ============ CLIENT PORTAL (standalone, bypasses shell) ============ -->
+<div id="portal-view" data-route="portal" class="min-h-screen">
+  <div class="max-w-3xl mx-auto px-6 py-10">
+    <div class="flex items-center justify-between mb-8">
+      <span class="font-display text-2xl" style="color:var(--terracotta-dark)">AJD</span>
+      <span class="text-sm" style="color:var(--ink-soft)">Client Portal</span>
+    </div>
+    <h1 id="portal-proj-name" class="font-display text-3xl mb-1"></h1>
+    <p id="portal-proj-client" class="text-sm mb-8" style="color:var(--ink-soft)"></p>
+
+    <h2 class="font-display text-xl mb-3">Mood board</h2>
+    <div id="portal-moodboard" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-10"></div>
+
+    <h2 class="font-display text-xl mb-3">Approvals</h2>
+    <div id="portal-approvals" class="space-y-3"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div id="modal-backdrop" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-40 p-4">
+  <div class="card max-w-md w-full p-6" id="modal-body"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ---------- state ---------- */
+const STORAGE_KEY = 'ajd_state_v1';
+function seed(){
+  return {
+    projects: [
+      {id:'p1', name:'Fairlight Residence', client:'Hana & Peter Olsson', status:'In progress', cover:'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=600', budget:25000},
+      {id:'p2', name:'Bondi Loft Fitout', client:'Studio Marlowe', status:'Concept', cover:'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=600', budget:15000}
+    ],
+    ffe: {
+      p1: [
+        {id:'f1', item:'Oak dining table', category:'Furniture', supplier:'Modern Times', qty:1, cost:4200, status:'Ordered'},
+        {id:'f2', item:'Pendant light — brass', category:'Lighting', supplier:'Articolo', qty:3, cost:1650, status:'Specified'}
+      ],
+      p2: []
+    },
+    time: { p1: [ {id:'t1', person:'Ava', date:'2026-08-20', hours:3.5, note:'Site measure + client walkthrough'} ], p2: [] },
+    clips: {
+      p1: [ {id:'c1', title:'Herringbone oak flooring', url:'https://example.com/flooring', image:'https://images.unsplash.com/photo-1616627981435-e962a2bf0791?w=600', forClient:true} ],
+      p2: []
+    },
+    approvals: {
+      p1: [ {id:'a1', title:'Living room palette', description:'Warm neutrals with terracotta accent wall', status:'pending', approvedBy:null, date:null, history:[]} ],
+      p2: []
+    },
+    tradesTasks: {
+      p1: [ {id:'x1', task:'Confirm dining table clearance before slab pour', done:false}, {id:'x2', task:'Electrician: pendant drop points per lighting plan', done:true} ],
+      p2: []
+    },
+    notes: {
+      p1: [],
+      p2: []
+    },
+    contacts: {
+      p1: [
+        {id:'ct1', name:'Modern Times', role:'Furniture supplier', phone:'(02) 9555 0142', email:'orders@moderntimes.example'},
+        {id:'ct2', name:'Articolo', role:'Lighting supplier', phone:'(02) 9555 0198', email:'trade@articolo.example'},
+        {id:'ct3', name:'Dave Reilly', role:'Electrician', phone:'0412 555 321', email:'dave@reillyelectrical.example'}
+      ],
+      p2: []
+    },
+    milestones: {
+      p1: [
+        {id:'m1', label:'Concept approved', targetDate:'2026-07-15', done:true},
+        {id:'m2', label:'Site measure sign-off', targetDate:'2026-08-25', done:false},
+        {id:'m3', label:'FF&E orders finalized', targetDate:'2026-09-15', done:false},
+        {id:'m4', label:'Install complete', targetDate:'2026-11-01', done:false}
+      ],
+      p2: []
+    },
+    activity: {
+      p1: [],
+      p2: []
+    },
+    invoices: {
+      p1: {number:1, markupPct:0},
+      p2: {number:1, markupPct:0}
+    },
+    // practice-wide hourly rates, keyed by person name — not per-project, since a
+    // person's $/hr doesn't usually change project to project
+    rates: {}
+  };
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  const s = seed();
+  save(s);
+  return s;
+}
+function save(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+let state = load();
+if(!state.rates) state.rates = {}; // migrate state saved before hourly rates existed
+
+function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function money(n){ return '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0}); }
+// shared short date formatter ("15 Sep 2026") for a YYYY-MM-DD string; falls back to the raw string if unparsable
+function fmtShortDate(d){
+  if(!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
+}
+function logActivity(projId, text){
+  if(!state.activity) state.activity = {};
+  if(!state.activity[projId]) state.activity[projId] = [];
+  state.activity[projId].push({ts: new Date().toISOString(), text});
+  save(state);
+}
+
+/* ---------- routing ---------- */
+function currentProjectId(){
+  const h = location.hash;
+  const m = h.match(/^#\/project\/([\w-]+)/) || h.match(/^#\/trades\/([\w-]+)/) || h.match(/^#\/portal\/([\w-]+)/);
+  return m ? m[1] : null;
+}
+let activeTab = 'ffe';
+let dashboardFilter = '';
+let showArchived = false;
+function filterDashboard(value){
+  dashboardFilter = (value||'').toLowerCase();
+  renderDashboard();
+}
+function toggleShowArchived(checked){
+  showArchived = !!checked;
+  renderDashboard();
+}
+let ffeFilter = '';
+function filterFfe(value){
+  ffeFilter = (value||'').toLowerCase();
+  renderFfe(currentProjectId());
+}
+let ffeSort = null;
+function toggleFfeCategorySort(){
+  ffeSort = ffeSort === 'category' ? null : 'category';
+  renderFfe(currentProjectId());
+}
+let ffeGroupByRoom = false;
+function toggleFfeGroupByRoom(){
+  ffeGroupByRoom = !ffeGroupByRoom;
+  renderFfe(currentProjectId());
+}
+
+function route(){
+  const h = location.hash || '#/';
+  document.querySelectorAll('[data-route]').forEach(el=>el.style.display='none');
+
+  if(h.startsWith('#/trades/')){
+    document.getElementById('trades-view').style.display='block';
+    renderTrades(currentProjectId());
+    return;
+  }
+  if(h.startsWith('#/portal/')){
+    document.getElementById('portal-view').style.display='block';
+    renderPortal(currentProjectId());
+    return;
+  }
+  // default: shell (dashboard or project)
+  document.getElementById('shell').style.display='block';
+  document.querySelectorAll('#shell [data-route]').forEach(el=>el.style.display='none');
+  if(h.startsWith('#/project/')){
+    document.querySelector('#shell [data-route="project"]').style.display='block';
+    renderProject(currentProjectId());
+  } else if(h.startsWith('#/team')){
+    document.querySelector('#shell [data-route="team"]').style.display='block';
+    renderTeam();
+  } else if(h.startsWith('#/calendar')){
+    document.querySelector('#shell [data-route="calendar"]').style.display='block';
+    renderCalendar();
+  } else {
+    document.querySelector('#shell [data-route="dashboard"]').style.display='block';
+    renderDashboard();
+  }
+}
+window.addEventListener('hashchange', route);
+
+/* ---------- dashboard ---------- */
+// Project status vocabulary: Concept (neutral) -> In progress (amber) -> Complete (green); On hold (red)
+function statusTagClass(status){
+  switch(status){
+    case 'In progress': return 'tag-pending';
+    case 'Complete': return 'tag-approved';
+    case 'On hold': return 'tag-rejected';
+    case 'Concept':
+    default: return 'tag-status';
+  }
+}
+function renderDashboard(){
+  const grid = document.getElementById('project-grid');
+  const searchInput = document.getElementById('dashboard-search');
+  if(searchInput && searchInput.value !== dashboardFilter && document.activeElement !== searchInput){
+    searchInput.value = dashboardFilter;
+  }
+  const archivedCheckbox = document.getElementById('dashboard-show-archived');
+  if(archivedCheckbox) archivedCheckbox.checked = showArchived;
+  const filtered = state.projects.filter(p => {
+    if(p.archived && !showArchived) return false;
+    if(!dashboardFilter) return true;
+    return (p.name||'').toLowerCase().includes(dashboardFilter) ||
+           (p.client||'').toLowerCase().includes(dashboardFilter);
+  });
+  const emptyEl = document.getElementById('dashboard-empty');
+  emptyEl.classList.toggle('hidden', filtered.length>0);
+  if(filtered.length===0){
+    if(state.projects.length===0){
+      emptyEl.className = 'text-center py-16';
+      emptyEl.innerHTML = `
+        <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No projects yet</h3>
+        <p class="text-sm mb-5" style="color:var(--ink-soft)">Create your first project to start tracking FF&amp;E, time, approvals and more.</p>
+        <button onclick="openNewProject()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ New project</button>
+      `;
+    } else {
+      emptyEl.className = 'text-center py-10 text-sm';
+      emptyEl.style.color = 'var(--ink-soft)';
+      emptyEl.textContent = 'No projects match';
+    }
+  }
+  grid.innerHTML = filtered.map(p => {
+    const budget = Number(p.budget) || 0;
+    const spent = ffeSpent(p.id);
+    const over = spent > budget;
+    const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
+    const bar = budget > 0
+      ? `<div class="mt-2 text-xs font-medium" style="color:${over ? 'var(--red)' : 'var(--ink-soft)'}">${money(spent)} of ${money(budget)}</div>
+         <div class="mt-1 w-full h-1 rounded-full overflow-hidden" style="background:var(--paper-2)">
+           <div class="h-full rounded-full" style="width:${pct}%; background:${over ? 'var(--red)' : 'var(--terracotta)'}"></div>
+         </div>`
+      : '';
+    const pendingCount = (state.approvals[p.id]||[]).filter(a=>a.status==='pending').length;
+    const pendingBadge = pendingCount > 0 ? `<span class="tag tag-pending">${pendingCount} pending</span>` : '';
+    const overdueCount = (state.approvals[p.id]||[]).filter(a=>{
+      if(a.status !== 'pending' || !a.requestedDate) return false;
+      const requested = new Date(a.requestedDate + 'T00:00:00');
+      if(isNaN(requested.getTime())) return false;
+      const days = Math.floor((Date.now() - requested.getTime()) / 86400000);
+      return days >= 5;
+    }).length;
+    const overdueBadge = overdueCount > 0 ? `<span class="tag tag-rejected">${overdueCount} overdue</span>` : '';
+    const archivedBadge = p.archived ? `<span class="tag tag-status">Archived</span>` : '';
+    const badgeRow = (pendingBadge || overdueBadge || archivedBadge)
+      ? `<div class="flex items-center gap-2 mt-2 flex-wrap">${pendingBadge}${overdueBadge}${archivedBadge}</div>`
+      : '';
+    const footer = bar
+      ? `<div class="mt-3 pt-3" style="border-top:1px solid var(--line)">${bar}</div>`
+      : '';
+    return `
+    <a href="#/project/${p.id}" class="card overflow-hidden block hover:shadow-md transition-shadow${p.archived ? ' opacity-60' : ''}">
+      <div class="relative h-32 bg-cover bg-center" style="background-image:url('${p.cover}')">
+        <span class="tag ${statusTagClass(p.status)} absolute top-2 right-2" style="background:rgba(255,255,255,.9); backdrop-filter:blur(4px);">${p.status}</span>
+      </div>
+      <div class="p-4">
+        <h3 class="font-display text-xl leading-tight">${p.name}</h3>
+        <p class="text-xs mt-0.5" style="color:var(--ink-soft)">${p.client}</p>
+        ${badgeRow}
+        ${footer}
+      </div>
+    </a>
+  `;
+  }).join('');
+}
+
+/* ---------- team workload (cross-project, read-only/derived) ---------- */
+// Aggregates hours, labor cost, and site-task counts per unique person name across every
+// non-archived project. Time entries key straight off r.person; site tasks are keyed by
+// assigneeContactId, which is resolved to a contact name per-project and folded into the
+// same bucket when it matches a name seen in time entries (or added as its own bucket
+// otherwise). No new persisted state — this is computed fresh from state.time/state.tradesTasks/
+// state.contacts/state.rates on every render, same pattern as getNextActionItems().
+function getTeamWorkload(){
+  const people = {}; // name -> {hours, projects:Map(id->name), openTasks, overdueTasks}
+  const ensure = name => {
+    if(!people[name]) people[name] = {hours:0, projects:new Map(), openTasks:0, overdueTasks:0};
+    return people[name];
+  };
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.time[p.id]||[]).forEach(r=>{
+      const name = r.person || 'Unknown';
+      const bucket = ensure(name);
+      bucket.hours += Number(r.hours) || 0;
+      bucket.projects.set(p.id, p.name);
+    });
+    const contacts = (state.contacts && state.contacts[p.id]) || [];
+    (state.tradesTasks[p.id]||[]).forEach(t=>{
+      if(!t.assigneeContactId) return;
+      const contact = contacts.find(c=>c.id===t.assigneeContactId);
+      if(!contact) return;
+      const bucket = ensure(contact.name);
+      bucket.projects.set(p.id, p.name);
+      if(!t.done){
+        bucket.openTasks++;
+        if(t.dueDate){
+          const due = new Date(t.dueDate + 'T00:00:00');
+          if(!isNaN(due.getTime()) && due.getTime() < Date.now()) bucket.overdueTasks++;
+        }
+      }
+    });
+  });
+  return Object.keys(people)
+    .sort((a,b)=> people[b].hours - people[a].hours || a.localeCompare(b))
+    .map(name=>({name, ...people[name]}));
+}
+function renderTeam(){
+  const grid = document.getElementById('team-grid');
+  const emptyEl = document.getElementById('team-empty');
+  if(!grid || !emptyEl) return;
+  if(!state.rates) state.rates = {};
+  const people = getTeamWorkload();
+  emptyEl.classList.toggle('hidden', people.length>0);
+  if(!people.length){
+    grid.innerHTML = '';
+    emptyEl.className = 'text-center py-16';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No team activity yet</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">Time logged or site tasks assigned to people will show up here, across every active project.</p>
+    `;
+    return;
+  }
+  grid.innerHTML = people.map(person=>{
+    const hasRate = Object.prototype.hasOwnProperty.call(state.rates, person.name);
+    const rate = Number(state.rates[person.name]) || 0;
+    const cost = person.hours * rate;
+    const costHtml = hasRate
+      ? money(cost)
+      : `<span class="text-sm" style="color:var(--terracotta-dark)">no rate set</span>`;
+    const taskBadge = person.overdueTasks > 0
+      ? `<span class="tag tag-rejected">${person.overdueTasks} overdue</span>`
+      : (person.openTasks > 0 ? `<span class="tag tag-pending">${person.openTasks} open</span>` : '');
+    const projectLinks = Array.from(person.projects.entries()).map(([pid,pname])=>
+      `<a href="#/project/${pid}" class="hover:text-[var(--terracotta-dark)]" style="text-decoration:underline; text-decoration-style:dotted;">${pname}</a>`
+    ).join(', ') || '—';
+    return `
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3 gap-2">
+        <span class="inline-flex items-center gap-2 min-w-0">${personAvatarHtml(person.name)}<span class="font-display text-lg truncate">${person.name}</span></span>
+        ${taskBadge}
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">Hours logged</div>
+          <div class="font-semibold">${person.hours}h</div>
+        </div>
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">Labor cost</div>
+          <div class="font-semibold">${costHtml}</div>
+        </div>
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">Open site tasks</div>
+          <div class="font-semibold">${person.openTasks}</div>
+        </div>
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">Overdue</div>
+          <div class="font-semibold" style="${person.overdueTasks>0 ? 'color:var(--red)' : ''}">${person.overdueTasks}</div>
+        </div>
+      </div>
+      <div class="text-xs pt-2" style="border-top:1px solid var(--line); color:var(--ink-soft)">
+        Projects: ${projectLinks}
+      </div>
+    </div>
+  `;
+  }).join('');
+}
+
+/* ---------- deadlines calendar (cross-project, read-only/derived) ---------- */
+// Unifies three date sources per active project into one list: FF&E items with an
+// expectedDate, milestones with a targetDate, and site tasks with a dueDate. Overdue
+// logic mirrors what each type already uses elsewhere (ffeRowHtml/getNextActionItems for
+// FF&E, milestoneNodeStatus for milestones, renderSiteTasks for tasks). Completed/delivered
+// entries are left out entirely — a finished item isn't a deadline to track anymore. No new
+// persisted state, computed fresh on every render like getTeamWorkload().
+function getDeadlineEntries(){
+  const entries = [];
+  const now = Date.now();
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.ffe[p.id]||[]).forEach(r=>{
+      if(!r.expectedDate || r.status === 'Delivered' || r.status === 'Installed') return;
+      const d = new Date(r.expectedDate + 'T00:00:00');
+      if(isNaN(d.getTime())) return;
+      entries.push({date:r.expectedDate, time:d.getTime(), kind:'Delivery', label:r.item, projId:p.id, projName:p.name, overdue: r.status === 'Ordered' && d.getTime() < now});
+    });
+    ((state.milestones && state.milestones[p.id])||[]).forEach(m=>{
+      if(!m.targetDate || m.done) return;
+      const d = new Date(m.targetDate + 'T00:00:00');
+      if(isNaN(d.getTime())) return;
+      entries.push({date:m.targetDate, time:d.getTime(), kind:'Milestone', label:m.label, projId:p.id, projName:p.name, overdue: d.getTime() < now});
+    });
+    (state.tradesTasks[p.id]||[]).forEach(t=>{
+      if(!t.dueDate || t.done) return;
+      const d = new Date(t.dueDate + 'T00:00:00');
+      if(isNaN(d.getTime())) return;
+      entries.push({date:t.dueDate, time:d.getTime(), kind:'Task', label:t.task, projId:p.id, projName:p.name, overdue: d.getTime() < now});
+    });
+  });
+  return entries.sort((a,b)=>a.time - b.time);
+}
+// single deadline row — kind chip reuses categoryChipHtml's name-hashed palette so
+// Delivery/Milestone/Task each get a stable color, same trick as FF&E category chips
+function deadlineEntryHtml(e){
+  return `
+    <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
+      <div class="w-24 flex-shrink-0 text-xs font-semibold" style="color:${e.overdue ? 'var(--red)' : 'var(--ink-soft)'}">${fmtShortDate(e.date)}</div>
+      ${categoryChipHtml(e.kind)}
+      <span class="flex-1 text-sm min-w-[120px]">${e.label}</span>
+      <a href="#/project/${e.projId}" class="text-xs hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">${e.projName}</a>
+      ${e.overdue ? `<span class="tag tag-rejected">Overdue</span>` : ''}
+    </div>
+  `;
+}
+function renderCalendar(){
+  const listEl = document.getElementById('calendar-list');
+  const emptyEl = document.getElementById('calendar-empty');
+  if(!listEl || !emptyEl) return;
+  const entries = getDeadlineEntries();
+  emptyEl.classList.toggle('hidden', entries.length>0);
+  if(!entries.length){
+    listEl.innerHTML = '';
+    emptyEl.className = 'text-center py-16';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">Nothing on the calendar</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">FF&amp;E delivery dates, milestone targets and site task due dates across active projects will show up here.</p>
+    `;
+    return;
+  }
+  const weekCutoff = Date.now() + 7*86400000;
+  const overdue = entries.filter(e=>e.overdue);
+  const thisWeek = entries.filter(e=>!e.overdue && e.time < weekCutoff);
+  const later = entries.filter(e=>!e.overdue && e.time >= weekCutoff);
+  const section = (title, rows) => !rows.length ? '' : `
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:${title==='Overdue' ? 'var(--red)' : 'var(--ink-soft)'}">${title} (${rows.length})</div>
+      <div class="space-y-2">${rows.map(deadlineEntryHtml).join('')}</div>
+    </div>
+  `;
+  listEl.innerHTML = [section('Overdue', overdue), section('This week', thisWeek), section('Later', later)].join('');
+}
+
+function openNewProject(){
+  showModal(`
+    <h3 class="font-display text-xl mb-4">New project</h3>
+    <div class="space-y-3">
+      <input id="np-name" placeholder="Project name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="np-client" placeholder="Client" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="np-budget" type="number" min="0" placeholder="FF&E budget ($)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createProject()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Create</button>
+    </div>
+  `);
+}
+function createProject(){
+  const name = document.getElementById('np-name').value.trim();
+  const client = document.getElementById('np-client').value.trim();
+  const budget = Number(document.getElementById('np-budget').value) || 0;
+  if(!name){ toast('Project name required'); return; }
+  const id = uid('p');
+  state.projects.push({id, name, client: client || '—', status:'Concept', cover:'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600', budget, archived:false});
+  state.ffe[id] = []; state.time[id] = []; state.clips[id] = []; state.approvals[id] = []; state.tradesTasks[id] = []; state.notes[id] = []; state.activity[id] = [];
+  if(!state.contacts) state.contacts = {};
+  state.contacts[id] = [];
+  if(!state.milestones) state.milestones = {};
+  state.milestones[id] = [];
+  if(!state.invoices) state.invoices = {};
+  state.invoices[id] = {number:1, markupPct:0};
+  save(state); closeModal(); toast('Project created');
+  renderDashboard();
+}
+
+function openGlobalSearch(){
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Search everything</h3>
+    <div class="space-y-3">
+      <input id="gs-input" placeholder="Search FF&amp;E, clips, approvals, notes..." oninput="runGlobalSearch(this.value)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div id="gs-results" class="space-y-1 max-h-80 overflow-y-auto text-sm"></div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Close</button>
+    </div>
+  `);
+  setTimeout(()=>{ const el = document.getElementById('gs-input'); if(el) el.focus(); }, 0);
+}
+function runGlobalSearch(query){
+  const results = document.getElementById('gs-results');
+  if(!results) return;
+  const q = (query||'').trim().toLowerCase();
+  if(!q){ results.innerHTML = `<p style="color:var(--ink-soft)">Type to search across all projects.</p>`; return; }
+  const projectName = pid => { const p = state.projects.find(x=>x.id===pid); return p ? p.name : pid; };
+  const hits = [];
+  state.projects.forEach(p=>{
+    if(p.archived) return;
+    const id = p.id;
+    (state.ffe[id]||[]).forEach(r=>{
+      if((r.item||'').toLowerCase().includes(q) || (r.category||'').toLowerCase().includes(q) || (r.supplier||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — FF&E: ${r.item}`});
+      }
+    });
+    (state.clips[id]||[]).forEach(c=>{
+      if((c.title||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Clip: ${c.title}`});
+      }
+    });
+    (state.approvals[id]||[]).forEach(a=>{
+      if((a.title||'').toLowerCase().includes(q) || (a.description||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Approval: ${a.title}`});
+      }
+    });
+    (state.notes[id]||[]).forEach(n=>{
+      if((n.text||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Note: ${n.text.slice(0,60)}${n.text.length>60?'…':''}`});
+      }
+    });
+  });
+  if(!hits.length){ results.innerHTML = `<p style="color:var(--ink-soft)">No results</p>`; return; }
+  results.innerHTML = hits.map(h=>`
+    <div onclick="goToGlobalSearchResult('${h.projId}')" class="px-3 py-2 rounded-lg cursor-pointer hover:bg-[var(--paper-2)]" style="color:var(--ink)">${h.label}</div>
+  `).join('');
+}
+function goToGlobalSearchResult(projId){
+  closeModal();
+  location.hash = '#/project/' + projId;
+}
+function openEditBudget(){
+  const id = currentProjectId();
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Edit FF&amp;E budget</h3>
+    <div class="space-y-3">
+      <input id="eb-budget" type="number" min="0" value="${Number(p.budget)||0}" placeholder="Budget ($)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveBudget('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function saveBudget(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  p.budget = Number(document.getElementById('eb-budget').value) || 0;
+  save(state); closeModal(); toast('Budget updated');
+  renderProjectStats(id);
+  renderFfe(id);
+}
+function toggleArchiveProject(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  p.archived = !p.archived;
+  save(state);
+  if(p.archived){
+    toast('Project archived');
+    location.hash = '#/';
+  } else {
+    toast('Project unarchived');
+    document.getElementById('proj-archive-btn').textContent = 'Archive project';
+    document.getElementById('proj-delete-btn').classList.add('hidden');
+  }
+}
+// permanently deletes an archived project and all of its associated data — never callable on an active project (the "Delete project" link only renders when p.archived)
+function deleteProject(id){
+  const idx = state.projects.findIndex(x=>x.id===id);
+  if(idx === -1) return;
+  const p = state.projects[idx];
+  if(!p.archived) return;
+  if(!confirm(`Permanently delete "${p.name}" and all its data (FF&E, time, clips, approvals, tasks, notes, activity)? This cannot be undone.`)) return;
+  state.projects.splice(idx, 1);
+  delete state.ffe[id];
+  delete state.time[id];
+  delete state.clips[id];
+  delete state.approvals[id];
+  delete state.tradesTasks[id];
+  delete state.notes[id];
+  delete state.activity[id];
+  if(state.contacts) delete state.contacts[id];
+  if(state.milestones) delete state.milestones[id];
+  if(state.invoices) delete state.invoices[id];
+  save(state);
+  toast('Project deleted');
+  location.hash = '#/';
+}
+
+function printProjectSummary(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  const budget = Number(p.budget) || 0;
+  const spent = ffeSpent(id);
+  const approvals = state.approvals[id] || [];
+  const approvalCounts = approvals.reduce((acc,a)=>{
+    acc[a.status] = (acc[a.status]||0) + 1;
+    return acc;
+  }, {});
+  const tasks = state.tradesTasks[id] || [];
+  const openTasks = tasks.filter(t=>!t.done).length;
+  const doneTasks = tasks.filter(t=>t.done).length;
+  const esc = s => String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const approvalRows = ['pending','approved','rejected'].map(status=>{
+    const count = approvalCounts[status] || 0;
+    return `<tr><td style="padding:4px 12px 4px 0; text-transform:capitalize;">${status}</td><td style="padding:4px 0; text-align:right; font-weight:600;">${count}</td></tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${esc(p.name)} — Project Summary</title>
+<style>
+  body{font-family:Arial, Helvetica, sans-serif; color:#2b2622; margin:32px; max-width:640px;}
+  h1{font-size:22px; margin:0 0 2px 0;}
+  .sub{color:#5c554d; font-size:13px; margin:0 0 24px 0;}
+  h2{font-size:15px; margin:24px 0 8px 0; border-bottom:1px solid #e4d9cc; padding-bottom:4px;}
+  table{border-collapse:collapse; width:100%; font-size:13px;}
+  .kv td{padding:4px 12px 4px 0;}
+  .kv td:last-child{text-align:right; font-weight:600;}
+  .over{color:#b3462c;}
+</style>
+</head>
+<body>
+  <h1>${esc(p.name)}</h1>
+  <p class="sub">${esc(p.client)} &middot; ${esc(p.status)}</p>
+
+  <h2>FF&amp;E Budget</h2>
+  <table class="kv">
+    <tr><td>Budget</td><td>${esc(money(budget))}</td></tr>
+    <tr><td>Spent</td><td class="${spent>budget?'over':''}">${esc(money(spent))}</td></tr>
+  </table>
+
+  <h2>Approvals</h2>
+  <table>${approvalRows}</table>
+
+  <h2>Site Tasks</h2>
+  <table class="kv">
+    <tr><td>Open</td><td>${openTasks}</td></tr>
+    <tr><td>Done</td><td>${doneTasks}</td></tr>
+  </table>
+</body>
+</html>`;
+  const win = window.open('', '_blank');
+  if(!win){ toast('Pop-up blocked — allow pop-ups to print'); return; }
+  const doc = win.document;
+  doc.write(html);
+  doc.close();
+  win.print();
+}
+
+function exportInvoice(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  if(!state.invoices) state.invoices = {};
+  if(!state.invoices[id]) state.invoices[id] = {number:1, markupPct:0};
+  const inv = state.invoices[id];
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Export invoice</h3>
+    <div class="space-y-3">
+      <p class="text-sm" style="color:var(--ink-soft)">Invoice #${inv.number} for ${p.name}</p>
+      <label class="text-sm block" style="color:var(--ink-soft)">Markup on FF&amp;E (%)</label>
+      <input id="inv-markup" type="number" step="0.1" min="0" value="${Number(inv.markupPct)||0}" placeholder="Markup %" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="generateInvoice('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Generate</button>
+    </div>
+  `);
+}
+function generateInvoice(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p) return;
+  if(!state.invoices) state.invoices = {};
+  if(!state.invoices[id]) state.invoices[id] = {number:1, markupPct:0};
+  const inv = state.invoices[id];
+  const markupPct = Number(document.getElementById('inv-markup').value) || 0;
+  const rows = state.ffe[id] || [];
+  const esc = s => String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const invoiceNumber = inv.number;
+  const dateStr = new Date().toISOString().slice(0,10);
+  const lineRows = rows.map(r=>{
+    const qty = Number(r.qty)||0;
+    const cost = Number(r.cost)||0;
+    const lineTotal = qty * cost;
+    return `<tr>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc;">${esc(r.item)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${qty}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(cost))}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(lineTotal))}</td>
+    </tr>`;
+  }).join('');
+  const subtotal = rows.reduce((a,r)=>a + (Number(r.cost)||0) * (Number(r.qty)||0), 0);
+  const markupAmount = subtotal * (markupPct / 100);
+
+  // Labor section: hours logged per person x their practice-wide hourly rate
+  if(!state.rates) state.rates = {};
+  const timeRows = state.time[id] || [];
+  const laborTotals = {};
+  timeRows.forEach(r=>{
+    const person = r.person || 'Unknown';
+    laborTotals[person] = (laborTotals[person] || 0) + (Number(r.hours) || 0);
+  });
+  const laborNames = Object.keys(laborTotals);
+  const laborRows = laborNames.map(name=>{
+    const hours = laborTotals[name];
+    const rate = Number(state.rates[name]) || 0;
+    const lineTotal = hours * rate;
+    return `<tr>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc;">${esc(name)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${hours}h</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(rate))}/hr</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(lineTotal))}</td>
+    </tr>`;
+  }).join('');
+  const laborTotal = laborNames.reduce((a,name)=>a + laborTotals[name] * (Number(state.rates[name])||0), 0);
+
+  const grandTotal = subtotal + markupAmount + laborTotal;
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${esc(p.name)} — Invoice #${invoiceNumber}</title>
+<style>
+  body{font-family:Arial, Helvetica, sans-serif; color:#2b2622; margin:32px; max-width:680px;}
+  h1{font-size:22px; margin:0 0 2px 0;}
+  .sub{color:#5c554d; font-size:13px; margin:0 0 4px 0;}
+  .meta{color:#5c554d; font-size:13px; margin:0 0 24px 0;}
+  table{border-collapse:collapse; width:100%; font-size:13px;}
+  th{text-align:left; padding:6px 8px; border-bottom:2px solid #2b2622; font-size:12px; text-transform:uppercase; letter-spacing:.03em;}
+  th:nth-child(2), th:nth-child(3), th:nth-child(4){text-align:right;}
+  .totals{width:100%; margin-top:16px; font-size:13px;}
+  .totals td{padding:4px 8px;}
+  .totals td:last-child{text-align:right; font-weight:600;}
+  .grand td{font-size:16px; border-top:2px solid #2b2622; padding-top:8px;}
+</style>
+</head>
+<body>
+  <h1>Invoice #${invoiceNumber}</h1>
+  <p class="sub">${esc(p.name)} &middot; ${esc(p.client)}</p>
+  <p class="meta">Date: ${esc(dateStr)}</p>
+
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Line total</th></tr>
+    </thead>
+    <tbody>${lineRows || '<tr><td colspan="4" style="padding:12px 8px; color:#5c554d;">No FF&amp;E items on this project.</td></tr>'}</tbody>
+  </table>
+
+  <h2>Labor</h2>
+  <table>
+    <thead>
+      <tr><th>Person</th><th>Hours</th><th>Rate</th><th>Subtotal</th></tr>
+    </thead>
+    <tbody>${laborRows || '<tr><td colspan="4" style="padding:12px 8px; color:#5c554d;">No time logged on this project.</td></tr>'}</tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>FF&amp;E subtotal</td><td>${esc(money(subtotal))}</td></tr>
+    <tr><td>Markup (${markupPct}%)</td><td>${esc(money(markupAmount))}</td></tr>
+    <tr><td>Labor</td><td>${esc(money(laborTotal))}</td></tr>
+    <tr class="grand"><td>Total due</td><td>${esc(money(grandTotal))}</td></tr>
+  </table>
+</body>
+</html>`;
+  const win = window.open('', '_blank');
+  if(!win){ toast('Pop-up blocked — allow pop-ups to print'); return; }
+  const doc = win.document;
+  doc.write(html);
+  doc.close();
+  win.print();
+  inv.markupPct = markupPct;
+  inv.number = invoiceNumber + 1;
+  save(state);
+  logActivity(id, `Generated invoice #${invoiceNumber}`);
+  closeModal();
+  toast(`Invoice #${invoiceNumber} generated`);
+  renderActivity(id);
+}
+
+/* ---------- project detail ---------- */
+function setTab(tab){
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    b.classList.toggle('tab-active', b.dataset.tab===tab);
+    b.classList.toggle('tab-inactive', b.dataset.tab!==tab);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('tab-'+tab).classList.remove('hidden');
+}
+
+function renderProject(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p){ location.hash = '#/'; return; }
+  document.getElementById('proj-name').textContent = p.name;
+  document.getElementById('proj-client').textContent = p.client;
+  const heroEl = document.getElementById('proj-hero');
+  if(heroEl) heroEl.style.backgroundImage = `url('${p.cover}')`;
+  const statusEl = document.getElementById('proj-hero-status');
+  if(statusEl){
+    statusEl.textContent = p.status;
+    statusEl.className = `tag ${statusTagClass(p.status)}`;
+    statusEl.style.background = 'rgba(255,255,255,.92)';
+    statusEl.style.backdropFilter = 'blur(4px)';
+  }
+  document.getElementById('proj-archive-btn').textContent = p.archived ? 'Unarchive project' : 'Archive project';
+  document.getElementById('proj-delete-btn').classList.toggle('hidden', !p.archived);
+  document.getElementById('proj-trades-link').href = '#/trades/'+id;
+  document.getElementById('proj-portal-link').href = '#/portal/'+id;
+  setTab(activeTab);
+  renderProjectStats(id);
+  renderNextActions(id);
+  renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id);
+}
+
+// stat pills below the hero banner — budget + FF&E spent (clickable to edit budget) and,
+// when present, a next-actions count. Mirrors the bordered-accent footer treatment used
+// on dashboard cards (a colored top border) rather than the plain-badge tag style.
+function renderProjectStats(id){
+  const p = state.projects.find(x=>x.id===id);
+  const el = document.getElementById('proj-stats');
+  if(!p || !el) return;
+  const budget = Number(p.budget) || 0;
+  const spent = ffeSpent(id);
+  const over = spent > budget;
+  const nextCount = getNextActionItems(id).length;
+  const pills = [];
+  pills.push(`
+    <button onclick="openEditBudget()" class="px-3 py-2 rounded-lg text-sm text-left hover:shadow-sm transition-shadow" style="background:#fff; border:1px solid var(--line); border-top:3px solid var(--terracotta);">
+      <span style="color:var(--ink-soft)">Budget</span> <span class="font-semibold ml-1">${money(budget)}</span>
+    </button>
+  `);
+  pills.push(`
+    <button onclick="openEditBudget()" class="px-3 py-2 rounded-lg text-sm text-left hover:shadow-sm transition-shadow" style="background:#fff; border:1px solid var(--line); border-top:3px solid ${over ? 'var(--red)' : 'var(--green)'};">
+      <span style="color:var(--ink-soft)">FF&amp;E Spent</span> <span class="font-semibold ml-1" style="${over ? 'color:var(--red)' : ''}">${money(spent)}</span>
+    </button>
+  `);
+  if(nextCount > 0){
+    pills.push(`
+      <span class="px-3 py-2 rounded-lg text-sm" style="background:#fff; border:1px solid var(--line); border-top:3px solid var(--amber);">
+        <span style="color:var(--ink-soft)">Next actions</span> <span class="font-semibold ml-1">${nextCount}</span>
+      </span>
+    `);
+  }
+  el.innerHTML = pills.join('');
+}
+
+// Read-only digest of things that need attention on this project, computed fresh from
+// existing state each render (no new stored fields). Shows up to 5 short lines, or a
+// neutral message when nothing needs attention.
+// Computes the full (unsliced) list of next-action digest lines for a project, shared by
+// renderNextActions (which shows up to 5) and the header's "Next actions" stat pill count.
+function getNextActionItems(id){
+  const items = [];
+
+  const approvals = state.approvals[id] || [];
+  const overdueApprovals = approvals.filter(a=>{
+    if(a.status !== 'pending' || !a.requestedDate) return false;
+    const requested = new Date(a.requestedDate + 'T00:00:00');
+    if(isNaN(requested.getTime())) return false;
+    const days = Math.floor((Date.now() - requested.getTime()) / 86400000);
+    return days >= 5;
+  }).length;
+  if(overdueApprovals > 0){
+    items.push(`${overdueApprovals} approval${overdueApprovals===1?'':'s'} overdue`);
+  }
+
+  const ffeRows = state.ffe[id] || [];
+  const needsRef = ffeRows.filter(r => r.status === 'Specified' && !r.clipId).length;
+  if(needsRef > 0){
+    items.push(`${needsRef} FF&E item${needsRef===1?'':'s'} need${needsRef===1?'s':''} a reference image`);
+  }
+
+  const overdueDeliveries = ffeRows.filter(r=>{
+    if(r.status !== 'Ordered' || !r.expectedDate) return false;
+    const expected = new Date(r.expectedDate + 'T00:00:00');
+    if(isNaN(expected.getTime())) return false;
+    return expected.getTime() < Date.now();
+  }).length;
+  if(overdueDeliveries > 0){
+    items.push(`${overdueDeliveries} item${overdueDeliveries===1?'':'s'} overdue for delivery`);
+  }
+
+  const milestones = (state.milestones && state.milestones[id]) || [];
+  const overdueMilestones = milestones.filter(m=>{
+    if(m.done || !m.targetDate) return false;
+    const target = new Date(m.targetDate + 'T00:00:00');
+    if(isNaN(target.getTime())) return false;
+    return target.getTime() < Date.now();
+  }).length;
+  if(overdueMilestones > 0){
+    items.push(`${overdueMilestones} milestone${overdueMilestones===1?'':'s'} overdue`);
+  }
+
+  const siteTasks = state.tradesTasks[id] || [];
+  const overdueSiteTasks = siteTasks.filter(t=>{
+    if(t.done || !t.dueDate) return false;
+    const due = new Date(t.dueDate + 'T00:00:00');
+    if(isNaN(due.getTime())) return false;
+    return due.getTime() < Date.now();
+  }).length;
+  if(overdueSiteTasks > 0){
+    items.push(`${overdueSiteTasks} site task${overdueSiteTasks===1?'':'s'} overdue`);
+  }
+
+  const timeRows = state.time[id] || [];
+  if(!timeRows.length){
+    items.push('No time logged at all');
+  } else {
+    const latest = timeRows.reduce((latest, r)=>{
+      const d = new Date(r.date + 'T00:00:00');
+      return (!isNaN(d.getTime()) && (!latest || d > latest)) ? d : latest;
+    }, null);
+    if(latest){
+      const daysSince = Math.floor((Date.now() - latest.getTime()) / 86400000);
+      if(daysSince >= 14){
+        items.push(`No time logged in ${daysSince} days`);
+      }
+    }
+  }
+
+  return items;
+}
+function renderNextActions(id){
+  const el = document.getElementById('next-actions');
+  if(!el) return;
+  const items = getNextActionItems(id);
+  const shown = items.slice(0, 5);
+  if(!shown.length){
+    el.innerHTML = `<div class="card px-4 py-3 text-sm" style="color:var(--ink-soft)">Nothing needs attention right now.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card px-4 py-3">
+      <p class="text-xs font-semibold mb-1.5" style="color:var(--ink-soft)">Next actions</p>
+      <ul class="space-y-1">
+        ${shown.map(t=>`<li class="text-sm">${t}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function ffeSpent(id){
+  const rows = state.ffe[id] || [];
+  return rows.reduce((a,r)=>a + (Number(r.cost)||0) * (Number(r.qty)||0), 0);
+}
+// FF&E status vocabulary: Specified (neutral) -> Ordered (amber) -> Delivered / Installed (green)
+function ffeStatusTagClass(status){
+  switch(status){
+    case 'Ordered': return 'tag-pending';
+    case 'Delivered':
+    case 'Installed': return 'tag-approved';
+    case 'Specified':
+    default: return 'tag-status';
+  }
+}
+// deterministic pastel palette for FF&E category chips, in the app's warm terracotta/paper palette
+const CATEGORY_CHIP_PALETTE = [
+  {background:'#f1ddd2', color:'#a24e30'}, // terracotta soft
+  {background:'#e9efe4', color:'#6b7d5a'}, // green soft
+  {background:'#fbf0dd', color:'#c98a2c'}, // amber soft
+  {background:'#e3e7f2', color:'#4c5b8a'}, // blue soft
+  {background:'#f2ece3', color:'#5c554d'}, // paper soft
+  {background:'#ecdcf0', color:'#7a4c8a'}  // plum soft
+];
+function categoryChipHtml(category){
+  const label = category || 'Uncategorised';
+  let sum = 0;
+  for(let i=0;i<label.length;i++) sum += label.charCodeAt(i);
+  const c = CATEGORY_CHIP_PALETTE[sum % CATEGORY_CHIP_PALETTE.length];
+  return `<span class="tag" style="background:${c.background}; color:${c.color}">${label}</span>`;
+}
+// colored initial-avatar chip for a person's name, hashed onto the same palette as category chips
+function personAvatarHtml(name){
+  const label = name || '?';
+  let sum = 0;
+  for(let i=0;i<label.length;i++) sum += label.charCodeAt(i);
+  const c = CATEGORY_CHIP_PALETTE[sum % CATEGORY_CHIP_PALETTE.length];
+  const initial = label.trim().charAt(0).toUpperCase() || '?';
+  return `<span class="inline-flex items-center justify-center rounded-full font-semibold" style="width:24px; height:24px; font-size:.7rem; background:${c.background}; color:${c.color}">${initial}</span>`;
+}
+const FFE_STATUS_OPTIONS = ['Specified','Ordered','Delivered','Installed'];
+// inline colors mirroring ffeStatusTagClass's tag classes, for the status <select>
+function ffeStatusSelectColors(status){
+  switch(status){
+    case 'Ordered': return {background:'#fbf0dd', color:'var(--amber)'};
+    case 'Delivered':
+    case 'Installed': return {background:'#e9efe4', color:'var(--green)'};
+    case 'Specified':
+    default: return {background:'var(--paper-2)', color:'var(--ink-soft)'};
+  }
+}
+// caret SVG (currentColor-agnostic — encoded as a fixed dark tint since it sits on a pastel pill background)
+const FFE_STATUS_CARET_URL = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%228%22%20height%3D%228%22%20viewBox%3D%220%200%208%208%22%3E%3Cpath%20d%3D%22M1%202.5L4%205.5L7%202.5%22%20stroke%3D%22%235c554d%22%20stroke-width%3D%221.3%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E';
+function ffeStatusSelectHtml(projId, r){
+  const c = ffeStatusSelectColors(r.status);
+  const options = FFE_STATUS_OPTIONS.map(s=>`<option value="${s}" ${s===r.status?'selected':''}>${s}</option>`).join('');
+  const style = `background-color:${c.background}; color:${c.color}; background-image:url('${FFE_STATUS_CARET_URL}'); background-repeat:no-repeat; background-position:right 8px center; background-size:8px 8px; appearance:none; -webkit-appearance:none; -moz-appearance:none; border:none; padding-right:22px;`;
+  return `<select onchange="updateFfeStatus('${projId}','${r.id}', this.value)" class="text-xs font-semibold rounded-full px-2 py-1" style="${style}">${options}</select>`;
+}
+function updateFfeStatus(projId, itemId, status){
+  const rows = state.ffe[projId];
+  if(!rows) return;
+  const r = rows.find(x=>x.id===itemId);
+  if(!r) return;
+  r.status = status;
+  save(state);
+  logActivity(projId, `${r.item} marked as ${status}`);
+  renderFfe(projId);
+  renderActivity(projId);
+  renderNextActions(projId);
+  renderProjectStats(projId);
+}
+// single FF&E row <tr>, shared by the flat table and the grouped-by-room view
+function ffeRowHtml(id, r, idx, clips){
+  const clip = r.clipId ? clips.find(c=>c.id===r.clipId) : null;
+  const thumb = clip
+    ? `<img src="${clip.image}" alt="" class="inline-block w-8 h-8 rounded object-cover align-middle mr-2" title="${clip.title}" onerror="this.style.display='none'">`
+    : '';
+  const rowBg = idx%2===1 ? 'background:var(--paper-2);' : '';
+  // expected-delivery date, shown only for items that have one: muted normally, red + labelled when
+  // the item is still "Ordered" and the date has passed (mirrors overdue-milestone styling)
+  let expectedHtml = '';
+  if(r.expectedDate){
+    const expected = new Date(r.expectedDate + 'T00:00:00');
+    const overdue = r.status === 'Ordered' && !isNaN(expected.getTime()) && expected.getTime() < Date.now();
+    expectedHtml = overdue
+      ? `<div class="text-xs font-semibold mt-1" style="color:var(--red)">Overdue — due ${fmtShortDate(r.expectedDate)}</div>`
+      : `<div class="text-xs mt-1" style="color:var(--ink-soft)">Due ${fmtShortDate(r.expectedDate)}</div>`;
+  }
+  return `
+    <tr class="border-t" style="border-color:var(--line); ${rowBg}">
+      <td class="px-4 py-2">${thumb}${r.item}</td>
+      <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
+      <td class="px-4 py-2" style="color:var(--ink-soft)">${r.supplier}</td>
+      <td class="px-4 py-2">${r.qty}</td>
+      <td class="px-4 py-2">${money(r.cost)}</td>
+      <td class="px-4 py-2">${ffeStatusSelectHtml(id, r)}${expectedHtml}</td>
+      <td class="px-4 py-2 text-right">
+        <button onclick="editFfe('${id}','${r.id}')" title="Edit item" class="text-sm leading-none mr-2 hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft)">&#9998;</button>
+        <button onclick="deleteFfe('${id}','${r.id}')" title="Remove item" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+      </td>
+    </tr>
+  `;
+}
+// small full-width heading row spanning all 7 columns, used above each room group
+function ffeGroupHeadingHtml(label){
+  return `
+    <tr>
+      <td class="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide" colspan="7" style="background:var(--paper-2); color:var(--ink-soft)">${label}</td>
+    </tr>
+  `;
+}
+// subtotal row for one room group
+function ffeGroupSubtotalHtml(subtotal){
+  return `
+    <tr class="border-t" style="border-color:var(--line)">
+      <td class="px-4 py-1.5 text-xs font-semibold text-right" colspan="4" style="color:var(--ink-soft)">Room subtotal</td>
+      <td class="px-4 py-1.5 text-xs font-semibold">${money(subtotal)}</td>
+      <td class="px-4 py-1.5" colspan="2"></td>
+    </tr>
+  `;
+}
+function renderFfe(id){
+  const allRows = state.ffe[id] || [];
+  const clips = state.clips[id] || [];
+  const searchInput = document.getElementById('ffe-search');
+  if(searchInput && searchInput.value !== ffeFilter && document.activeElement !== searchInput){
+    searchInput.value = ffeFilter;
+  }
+  let rows = ffeFilter
+    ? allRows.filter(r =>
+        (r.item||'').toLowerCase().includes(ffeFilter) ||
+        (r.category||'').toLowerCase().includes(ffeFilter) ||
+        (r.supplier||'').toLowerCase().includes(ffeFilter))
+    : allRows;
+  if(ffeSort === 'category'){
+    rows = rows.slice().sort((a,b)=>(a.category||'').localeCompare(b.category||''));
+  }
+  const categoryTh = document.getElementById('ffe-category-th');
+  if(categoryTh) categoryTh.textContent = 'Category' + (ffeSort === 'category' && !ffeGroupByRoom ? ' ▲' : '');
+  const groupBtn = document.getElementById('ffe-group-room-btn');
+  if(groupBtn){
+    groupBtn.classList.toggle('btn-primary', ffeGroupByRoom);
+    groupBtn.classList.toggle('font-semibold', true);
+    groupBtn.classList.toggle('btn-ghost', !ffeGroupByRoom);
+    groupBtn.textContent = ffeGroupByRoom ? 'Grouped by room ✓' : 'Group by room';
+  }
+  const emptyEl = document.getElementById('ffe-empty');
+  emptyEl.classList.toggle('hidden', rows.length>0);
+  emptyEl.textContent = allRows.length && !rows.length
+    ? 'No items match your search.'
+    : 'No FF&E items yet — add the first one.';
+  if(ffeGroupByRoom){
+    // Group the filtered/sorted rows by room. Items with no room fall under
+    // "Unassigned", which always sorts last; named rooms sort alphabetically.
+    // Category-sort (ffeSort) still applies — it was already applied above,
+    // so each room's rows arrive here in that order and only get re-grouped.
+    const groups = new Map();
+    rows.forEach(r=>{
+      const key = (r.room||'').trim();
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+    const roomKeys = Array.from(groups.keys())
+      .filter(k=>k)
+      .sort((a,b)=>a.localeCompare(b));
+    if(groups.has('')) roomKeys.push('');
+    let idxCounter = 0;
+    let html = '';
+    roomKeys.forEach(key=>{
+      const groupRows = groups.get(key);
+      const label = key || 'Unassigned';
+      const subtotal = groupRows.reduce((a,r)=>a + (Number(r.cost)||0) * (Number(r.qty)||0), 0);
+      html += ffeGroupHeadingHtml(label);
+      groupRows.forEach(r=>{
+        html += ffeRowHtml(id, r, idxCounter, clips);
+        idxCounter++;
+      });
+      html += ffeGroupSubtotalHtml(subtotal);
+    });
+    document.getElementById('ffe-tbody').innerHTML = html;
+  } else {
+    document.getElementById('ffe-tbody').innerHTML = rows.map((r,idx)=>ffeRowHtml(id, r, idx, clips)).join('');
+  }
+  const tfoot = document.getElementById('ffe-tfoot');
+  if(rows.length){
+    const total = rows.reduce((a,r)=>a + (Number(r.cost)||0) * (Number(r.qty)||0), 0);
+    tfoot.innerHTML = `
+      <tr class="border-t" style="border-color:var(--line)">
+        <td class="px-4 py-2 font-semibold" colspan="4">Total</td>
+        <td class="px-4 py-2 font-semibold">${money(total)}</td>
+        <td class="px-4 py-2" colspan="2"></td>
+      </tr>
+    `;
+  } else {
+    tfoot.innerHTML = '';
+  }
+  const p = state.projects.find(x=>x.id===id);
+  const spent = ffeSpent(id);
+  const budget = Number(p && p.budget) || 0;
+  const over = spent > budget;
+  const summaryEl = document.getElementById('ffe-budget-summary');
+  summaryEl.style.color = over ? 'var(--red)' : 'var(--ink-soft)';
+  summaryEl.textContent = `Spent ${money(spent)} of ${money(budget)} budget`;
+  const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
+  let barEl = document.getElementById('ffe-budget-bar');
+  if(!barEl){
+    barEl = document.createElement('div');
+    barEl.id = 'ffe-budget-bar';
+    barEl.className = 'mt-1 w-full h-1.5 rounded-full overflow-hidden';
+    barEl.style.background = 'var(--paper-2)';
+    barEl.innerHTML = `<div id="ffe-budget-bar-fill" class="h-full rounded-full"></div>`;
+    summaryEl.insertAdjacentElement('afterend', barEl);
+  }
+  const fillEl = document.getElementById('ffe-budget-bar-fill');
+  fillEl.style.width = pct + '%';
+  fillEl.style.background = over ? 'var(--red)' : 'var(--terracotta)';
+}
+function csvEscape(val){
+  const s = String(val==null ? '' : val);
+  if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+function exportFfeCsv(id){
+  const rows = state.ffe[id] || [];
+  const p = state.projects.find(x=>x.id===id);
+  const header = ['Item','Category','Supplier','Qty','Cost','Status'];
+  const lines = [header.join(',')];
+  rows.forEach(r=>{
+    lines.push([r.item, r.category, r.supplier, r.qty, r.cost, r.status].map(csvEscape).join(','));
+  });
+  const csv = lines.join('\n');
+  const nameSlug = (p ? p.name : 'project').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'project';
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `${nameSlug}-ffe-schedule.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+function exportTimeCsv(id){
+  const rows = state.time[id] || [];
+  const p = state.projects.find(x=>x.id===id);
+  const header = ['Date','Person','Hours','Note'];
+  const lines = [header.join(',')];
+  rows.forEach(r=>{
+    lines.push([r.date, r.person, r.hours, r.note].map(csvEscape).join(','));
+  });
+  const csv = lines.join('\n');
+  const nameSlug = (p ? p.name : 'project').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'project';
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `${nameSlug}-time-log.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+function exportAllData(){
+  const json = JSON.stringify(state, null, 2);
+  const dateSlug = new Date().toISOString().slice(0,10);
+  const a = document.createElement('a');
+  a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+  a.download = `ajd-backup-${dateSlug}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('Data exported');
+}
+function openImportData(){
+  const input = document.getElementById('import-file-input');
+  if(!input) return;
+  input.value = '';
+  input.click();
+}
+function handleImportFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(){
+    let parsed;
+    try{
+      parsed = JSON.parse(reader.result);
+    }catch(e){
+      toast('Import failed — not valid JSON');
+      return;
+    }
+    if(!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)){
+      toast('Import failed — file is not a valid AJD backup');
+      return;
+    }
+    if(!confirm('This will overwrite all current data with the imported backup. Continue?')) return;
+    state = parsed;
+    save(state);
+    toast('Data imported');
+    route();
+  };
+  reader.onerror = function(){
+    toast('Import failed — could not read file');
+  };
+  reader.readAsText(file);
+}
+function deleteFfe(projId, itemId){
+  const rows = state.ffe[projId];
+  if(!rows) return;
+  if(!confirm('Remove this item?')) return;
+  const idx = rows.findIndex(r=>r.id===itemId);
+  if(idx === -1) return;
+  const removedItem = rows[idx].item;
+  rows.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed FF&E item: ${removedItem}`);
+  renderFfe(projId);
+  renderActivity(projId);
+}
+// shared <input list="nf-supplier-list"> + <datalist> markup: free-text supplier field with
+// autocomplete suggestions drawn from this project's Contacts tab. Keeps existing free-text
+// supplier values on FF&E rows working even when they don't match any contact.
+function ffeSupplierFieldHtml(id, value){
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  const options = contacts.map(c=>`<option value="${c.name}">`).join('');
+  return `
+    <input id="nf-supplier" list="nf-supplier-list" value="${value||''}" placeholder="Supplier" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <datalist id="nf-supplier-list">${options}</datalist>
+  `;
+}
+function openNewFfe(){
+  const id = currentProjectId();
+  const clips = state.clips[id] || [];
+  const clipOptions = clips.map(c=>`<option value="${c.id}">${c.title}</option>`).join('');
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add FF&amp;E item</h3>
+    <div class="space-y-3">
+      <input id="nf-item" placeholder="Item name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-room" placeholder="Room (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-category" placeholder="Category (e.g. Furniture)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      ${ffeSupplierFieldHtml(id, '')}
+      <div class="flex gap-3">
+        <input id="nf-qty" type="number" min="1" value="1" placeholder="Qty" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <input id="nf-cost" type="number" min="0" placeholder="Cost" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <select id="nf-status" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option>Specified</option><option>Ordered</option><option>Delivered</option><option>Installed</option>
+      </select>
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Expected delivery date (optional)</label>
+        <input id="nf-expected" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">No reference</option>${clipOptions}
+      </select>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createFfe('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createFfe(id){
+  const item = document.getElementById('nf-item').value.trim();
+  if(!item){ toast('Item name required'); return; }
+  const clipId = document.getElementById('nf-clip').value || null;
+  state.ffe[id].push({
+    id: uid('f'),
+    item,
+    room: document.getElementById('nf-room').value.trim() || null,
+    category: document.getElementById('nf-category').value.trim() || 'Uncategorised',
+    supplier: document.getElementById('nf-supplier').value.trim() || '—',
+    qty: Number(document.getElementById('nf-qty').value) || 1,
+    cost: Number(document.getElementById('nf-cost').value) || 0,
+    status: document.getElementById('nf-status').value,
+    expectedDate: document.getElementById('nf-expected').value || null,
+    clipId
+  });
+  save(state); logActivity(id, `Added FF&E item: ${item}`); closeModal(); toast('Item added'); renderFfe(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
+}
+function editFfe(projId, itemId){
+  const rows = state.ffe[projId];
+  if(!rows) return;
+  const r = rows.find(x=>x.id===itemId);
+  if(!r) return;
+  const clips = state.clips[projId] || [];
+  const clipOptions = clips.map(c=>`<option value="${c.id}" ${c.id===r.clipId?'selected':''}>${c.title}</option>`).join('');
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Edit FF&amp;E item</h3>
+    <div class="space-y-3">
+      <input id="nf-item" value="${r.item||''}" placeholder="Item name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-room" value="${r.room||''}" placeholder="Room (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-category" value="${r.category||''}" placeholder="Category (e.g. Furniture)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      ${ffeSupplierFieldHtml(projId, r.supplier)}
+      <div class="flex gap-3">
+        <input id="nf-qty" type="number" min="1" value="${Number(r.qty)||1}" placeholder="Qty" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <input id="nf-cost" type="number" min="0" value="${Number(r.cost)||0}" placeholder="Cost" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <select id="nf-status" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        ${FFE_STATUS_OPTIONS.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Expected delivery date (optional)</label>
+        <input id="nf-expected" type="date" value="${r.expectedDate||''}" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">No reference</option>${clipOptions}
+      </select>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveFfe('${projId}','${itemId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function saveFfe(projId, itemId){
+  const rows = state.ffe[projId];
+  if(!rows) return;
+  const r = rows.find(x=>x.id===itemId);
+  if(!r) return;
+  const item = document.getElementById('nf-item').value.trim();
+  if(!item){ toast('Item name required'); return; }
+  r.item = item;
+  r.room = document.getElementById('nf-room').value.trim() || null;
+  r.category = document.getElementById('nf-category').value.trim() || 'Uncategorised';
+  r.supplier = document.getElementById('nf-supplier').value.trim() || '—';
+  r.qty = Number(document.getElementById('nf-qty').value) || 1;
+  r.cost = Number(document.getElementById('nf-cost').value) || 0;
+  r.status = document.getElementById('nf-status').value;
+  r.expectedDate = document.getElementById('nf-expected').value || null;
+  r.clipId = document.getElementById('nf-clip').value || null;
+  save(state); closeModal(); toast('Item updated'); renderFfe(projId); renderNextActions(projId); renderProjectStats(projId);
+}
+
+function renderTime(id){
+  const rows = state.time[id] || [];
+  document.getElementById('time-empty').classList.toggle('hidden', rows.length>0);
+  document.getElementById('time-tbody').innerHTML = rows.map((r,idx)=>`
+    <tr class="border-t" style="border-color:var(--line); ${idx%2===1 ? 'background:var(--paper-2);' : ''}">
+      <td class="px-4 py-2">${r.date}</td>
+      <td class="px-4 py-2"><span class="inline-flex items-center gap-2">${personAvatarHtml(r.person)}${r.person}</span></td>
+      <td class="px-4 py-2">${r.hours}h</td>
+      <td class="px-4 py-2" style="color:var(--ink-soft)">${r.note||''}</td>
+      <td class="px-4 py-2 text-right">
+        <button onclick="editTime('${id}','${r.id}')" title="Edit entry" class="text-sm leading-none mr-2 hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft)">&#9998;</button>
+        <button onclick="deleteTime('${id}','${r.id}')" title="Remove entry" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+      </td>
+    </tr>
+  `).join('');
+  const total = rows.reduce((a,r)=>a+Number(r.hours),0);
+  document.getElementById('time-total').textContent = rows.length ? `Total: ${total}h` : '';
+
+  const byPerson = document.getElementById('time-by-person');
+  if(!rows.length){
+    byPerson.className = 'mb-3';
+    byPerson.innerHTML = '';
+  } else {
+    if(!state.rates) state.rates = {};
+    const totals = {};
+    rows.forEach(r=>{
+      const name = r.person || 'Unknown';
+      totals[name] = (totals[name] || 0) + (Number(r.hours) || 0);
+    });
+    const names = Object.keys(totals);
+    const maxHours = Math.max(...names.map(n=>totals[n]));
+    let laborTotal = 0;
+    // horizontal bar-chart breakdown: widest bar = person with the most hours, others
+    // scaled proportionally; bar color reuses personAvatarHtml's hash-to-palette so a
+    // person's color stays consistent with their avatar elsewhere in the app
+    byPerson.className = 'space-y-2 mb-4';
+    byPerson.innerHTML = names.map(name=>{
+      const hours = totals[name];
+      const rate = Number(state.rates[name]) || 0;
+      const cost = hours * rate;
+      laborTotal += cost;
+      const pct = maxHours > 0 ? Math.max(4, (hours / maxHours) * 100) : 4;
+      let sum = 0;
+      for(let i=0;i<name.length;i++) sum += name.charCodeAt(i);
+      const c = CATEGORY_CHIP_PALETTE[sum % CATEGORY_CHIP_PALETTE.length];
+      const rateLabel = rate > 0
+        ? `<span style="color:var(--ink-soft)"> &middot; ${money(cost)} (${money(rate)}/hr)</span>`
+        : `<span class="text-xs" style="color:var(--terracotta-dark)"> &middot; set rate</span>`;
+      return `
+        <div class="cursor-pointer" onclick="openSetRate('${name.replace(/'/g,"\\'")}')" title="Click to set hourly rate">
+          <div class="flex items-center justify-between text-sm mb-1">
+            <span class="inline-flex items-center gap-2">${personAvatarHtml(name)}<span class="font-medium">${name}</span></span>
+            <span>${hours}h${rateLabel}</span>
+          </div>
+          <div class="w-full h-2 rounded-full overflow-hidden" style="background:var(--paper-2)">
+            <div class="h-full rounded-full" style="width:${pct}%; background:${c.color}"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    if(laborTotal > 0){
+      byPerson.innerHTML += `<div class="text-right text-sm font-semibold pt-1">Labor cost: ${money(laborTotal)}</div>`;
+    }
+  }
+}
+// opens a tiny modal to set a person's practice-wide $/hr rate, used by the labor-cost
+// breakdown in Time Tracking and folded into invoice labor totals
+function openSetRate(name){
+  if(!state.rates) state.rates = {};
+  const current = Number(state.rates[name]) || 0;
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Set hourly rate</h3>
+    <div class="space-y-3">
+      <p class="text-sm flex items-center gap-2" style="color:var(--ink-soft)">${personAvatarHtml(name)}<span>${name}</span></p>
+      <input id="sr-rate" type="number" step="0.01" min="0" value="${current}" placeholder="$/hr" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveRate('${name.replace(/'/g,"\\'")}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function saveRate(name){
+  if(!state.rates) state.rates = {};
+  state.rates[name] = Number(document.getElementById('sr-rate').value) || 0;
+  save(state);
+  closeModal();
+  toast(`Rate set for ${name}`);
+  renderTime(currentProjectId());
+}
+function openNewTime(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Log time</h3>
+    <div class="space-y-3">
+      <input id="nt-person" placeholder="Person" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div class="flex gap-3">
+        <input id="nt-date" type="date" value="${new Date().toISOString().slice(0,10)}" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <input id="nt-hours" type="number" step="0.25" min="0" placeholder="Hours" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <input id="nt-note" placeholder="Note" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createTime('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Log</button>
+    </div>
+  `);
+}
+function createTime(id){
+  const person = document.getElementById('nt-person').value.trim();
+  const hours = Number(document.getElementById('nt-hours').value);
+  if(!person || !hours){ toast('Person and hours required'); return; }
+  state.time[id].push({id:uid('t'), person, date:document.getElementById('nt-date').value, hours, note:document.getElementById('nt-note').value.trim()});
+  save(state); logActivity(id, `Logged ${hours}h for ${person}`); closeModal(); toast('Time logged'); renderTime(id); renderActivity(id);
+}
+function deleteTime(projId, entryId){
+  const rows = state.time[projId];
+  if(!rows) return;
+  if(!confirm('Remove this time entry?')) return;
+  const idx = rows.findIndex(r=>r.id===entryId);
+  if(idx === -1) return;
+  const removedPerson = rows[idx].person;
+  rows.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed time entry for ${removedPerson}`);
+  renderTime(projId);
+  renderActivity(projId);
+}
+function editTime(projId, entryId){
+  const rows = state.time[projId];
+  if(!rows) return;
+  const r = rows.find(x=>x.id===entryId);
+  if(!r) return;
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Edit time entry</h3>
+    <div class="space-y-3">
+      <input id="nt-person" value="${r.person||''}" placeholder="Person" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div class="flex gap-3">
+        <input id="nt-date" type="date" value="${r.date||''}" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <input id="nt-hours" type="number" step="0.25" min="0" value="${Number(r.hours)||0}" placeholder="Hours" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <input id="nt-note" value="${r.note||''}" placeholder="Note" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveTime('${projId}','${entryId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function saveTime(projId, entryId){
+  const rows = state.time[projId];
+  if(!rows) return;
+  const r = rows.find(x=>x.id===entryId);
+  if(!r) return;
+  const person = document.getElementById('nt-person').value.trim();
+  const hours = Number(document.getElementById('nt-hours').value);
+  if(!person || !hours){ toast('Person and hours required'); return; }
+  r.person = person;
+  r.date = document.getElementById('nt-date').value;
+  r.hours = hours;
+  r.note = document.getElementById('nt-note').value.trim();
+  save(state); logActivity(projId, `Updated time entry for ${person}`); closeModal(); toast('Time entry updated'); renderTime(projId); renderActivity(projId);
+}
+
+// Pinterest-style masonry moodboard card: image at natural aspect ratio, with a
+// hover-reveal scrim (mirrors #proj-hero's gradient-scrim pattern) carrying the
+// title/URL and "Show client" checkbox. `group`/`focus-within` also surfaces the
+// scrim on tap/keyboard focus for touch devices with no hover, and a lightweight
+// always-visible caption strip sits below the image so the title is never fully
+// hidden on a device that can't hover at all.
+function renderClips(id){
+  const rows = state.clips[id] || [];
+  document.getElementById('clip-empty').classList.toggle('hidden', rows.length>0);
+  document.getElementById('clip-grid').innerHTML = rows.map(c=>`
+    <div class="card overflow-hidden break-inside-avoid mb-4">
+      <div class="group relative" tabindex="0">
+        <img src="${c.image}" alt="${c.title}" class="w-full h-auto block" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+        <div class="hidden w-full items-center justify-center text-xs py-10" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>
+        <div class="absolute inset-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex flex-col justify-end p-3" style="background:linear-gradient(to top, rgba(0,0,0,.72) 0%, rgba(0,0,0,.22) 55%, rgba(0,0,0,0) 100%);">
+          <a href="${c.url}" target="_blank" class="text-sm font-medium text-white hover:underline" style="text-shadow:0 1px 4px rgba(0,0,0,.45)">${c.title}</a>
+          <label class="text-xs flex items-center gap-1 mt-1.5 text-white" style="text-shadow:0 1px 4px rgba(0,0,0,.45)">
+            <input type="checkbox" ${c.forClient?'checked':''} onchange="toggleClipClient('${id}','${c.id}', this.checked)"> Show client
+          </label>
+        </div>
+      </div>
+      <div class="px-3 py-2 text-xs truncate" style="color:var(--ink-soft)">${c.title}</div>
+    </div>
+  `).join('');
+}
+function toggleClipClient(id, clipId, checked){
+  const c = state.clips[id].find(x=>x.id===clipId);
+  if(c){ c.forClient = checked; save(state); }
+}
+function openNewClip(){
+  const id = currentProjectId();
+  const ffeRows = state.ffe[id] || [];
+  const ffeOptions = ffeRows.map(r=>`<option value="${r.id}">${r.item}</option>`).join('');
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Save web clip</h3>
+    <div class="space-y-3">
+      <input id="nc-title" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nc-url" placeholder="Source URL" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nc-image" placeholder="Image URL" oninput="updateClipPreview()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div>
+        <img id="nc-preview" alt="Preview" style="display:none" class="h-24 w-full object-cover rounded-lg" onload="document.getElementById('nc-preview').style.display='block'; document.getElementById('nc-preview-error').style.display='none';" onerror="document.getElementById('nc-preview').style.display='none'; document.getElementById('nc-preview-error').style.display='block';">
+        <p id="nc-preview-error" style="display:none; color:var(--ink-soft)" class="text-xs">Couldn't load image</p>
+      </div>
+      <label class="text-sm flex items-center gap-2"><input id="nc-client" type="checkbox" checked> Show on client moodboard</label>
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Link to FF&amp;E item (optional)</label>
+        <select id="nc-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          <option value="">None</option>${ffeOptions}
+        </select>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createClip('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function updateClipPreview(){
+  const input = document.getElementById('nc-image');
+  const img = document.getElementById('nc-preview');
+  const err = document.getElementById('nc-preview-error');
+  if(!input || !img) return;
+  const url = input.value.trim();
+  err.style.display = 'none';
+  if(!url){ img.style.display = 'none'; img.removeAttribute('src'); return; }
+  img.src = url;
+}
+function createClip(id){
+  const title = document.getElementById('nc-title').value.trim();
+  const image = document.getElementById('nc-image').value.trim();
+  if(!title || !image){ toast('Title and image required'); return; }
+  const clipId = uid('c');
+  state.clips[id].push({id:clipId, title, url:document.getElementById('nc-url').value.trim()||'#', image, forClient:document.getElementById('nc-client').checked});
+  const ffeEl = document.getElementById('nc-ffe');
+  const targetFfeId = ffeEl ? ffeEl.value : '';
+  if(targetFfeId){
+    const ffeRow = (state.ffe[id]||[]).find(r=>r.id===targetFfeId);
+    if(ffeRow) ffeRow.clipId = clipId;
+  }
+  save(state); logActivity(id, `Saved clip: ${title}`); closeModal(); toast('Clip saved');
+  renderClips(id); renderActivity(id);
+  if(targetFfeId){
+    renderFfe(id); renderNextActions(id); renderProjectStats(id);
+  }
+}
+
+// overdue badge for a pending approval: none <5d, amber 5-9d, red 10+d. Missing requestedDate (pre-existing seed data) = treat as just-requested, no badge.
+function pendingBadgeHtml(a){
+  if(a.status !== 'pending' || !a.requestedDate) return '';
+  const requested = new Date(a.requestedDate + 'T00:00:00');
+  if(isNaN(requested.getTime())) return '';
+  const days = Math.floor((Date.now() - requested.getTime()) / 86400000);
+  if(days < 5) return '';
+  const cls = days >= 10 ? 'tag-rejected' : 'tag-pending';
+  return `<span class="tag ${cls}">Pending ${days}d</span>`;
+}
+// always-visible "Requested Xd ago" line for a pending approval with a requestedDate — separate from
+// pendingBadgeHtml, which only appears once an approval is 5+ days overdue.
+function requestedAgoHtml(a){
+  if(a.status !== 'pending' || !a.requestedDate) return '';
+  const requested = new Date(a.requestedDate + 'T00:00:00');
+  if(isNaN(requested.getTime())) return '';
+  const days = Math.floor((Date.now() - requested.getTime()) / 86400000);
+  if(days < 0) return '';
+  const label = days === 0 ? 'Requested today' : `Requested ${days}d ago`;
+  return `<p class="text-xs mt-1" style="color:var(--ink-soft)">${label}</p>`;
+}
+// compact "status by approvedBy on date" list for approvals with prior decisions
+function approvalHistoryHtml(a){
+  if(!a.history || !a.history.length) return '';
+  return `
+    <div class="mt-2 pt-2 border-t" style="border-color:var(--line)">
+      <p class="text-xs font-medium" style="color:var(--ink-soft)">History</p>
+      <ul class="mt-1 space-y-1">
+        ${a.history.map(h=>`
+          <li class="text-xs flex items-center gap-1.5" style="color:var(--ink-soft)">
+            <span class="tag tag-${h.status}" style="font-size:.65rem; padding:.1rem .4rem;">${h.status}</span>
+            <span>by ${h.approvedBy || '—'} on ${h.date || '—'}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `;
+}
+// single approval card — shared markup, unchanged from the pre-Kanban flat-list version
+function approvalCardHtml(id, a){
+  return `
+    <div class="card p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <h4 class="font-medium">${a.title}</h4>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">${a.description}</p>
+          ${requestedAgoHtml(a)}
+          ${a.date ? `<p class="text-xs mt-2" style="color:var(--ink-soft)">${a.status==='approved'?'Approved':'Rejected'} by ${a.approvedBy} on ${a.date}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="tag tag-${a.status}">${a.status}</span>
+          ${pendingBadgeHtml(a)}
+        </div>
+      </div>
+      ${approvalHistoryHtml(a)}
+      <div class="flex gap-2 mt-3">
+        ${a.status!=='approved' ? `<button onclick="designerDecide('${id}','${a.id}','approved')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
+        ${a.status!=='rejected' ? `<button onclick="designerDecide('${id}','${a.id}','rejected')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+// one Kanban column: heading + count badge, then its cards (or a "None" placeholder)
+function approvalColumnHtml(id, label, tagClass, rows){
+  const cards = rows.length
+    ? rows.map(a=>approvalCardHtml(id, a)).join('')
+    : `<div class="text-center py-6 text-sm" style="color:var(--ink-soft)">None</div>`;
+  return `
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <h3 class="text-sm font-semibold" style="color:var(--ink)">${label}</h3>
+        <span class="tag ${tagClass}">${rows.length}</span>
+      </div>
+      <div class="space-y-3">${cards}</div>
+    </div>
+  `;
+}
+function renderApprovals(id){
+  const rows = state.approvals[id] || [];
+  document.getElementById('approval-empty').classList.toggle('hidden', rows.length>0);
+  const pending = rows.filter(a=>a.status==='pending');
+  const approved = rows.filter(a=>a.status==='approved');
+  const rejected = rows.filter(a=>a.status==='rejected');
+  document.getElementById('approval-list').innerHTML =
+    approvalColumnHtml(id, 'Pending', 'tag-pending', pending) +
+    approvalColumnHtml(id, 'Approved', 'tag-approved', approved) +
+    approvalColumnHtml(id, 'Rejected', 'tag-rejected', rejected);
+}
+function openNewApproval(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Request approval</h3>
+    <div class="space-y-3">
+      <input id="na-title" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <textarea id="na-desc" placeholder="Description" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="3"></textarea>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createApproval('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Request</button>
+    </div>
+  `);
+}
+function createApproval(id){
+  const title = document.getElementById('na-title').value.trim();
+  if(!title){ toast('Title required'); return; }
+  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, history:[], requestedDate:new Date().toISOString().slice(0,10)});
+  save(state); logActivity(id, `Requested approval: ${title}`); closeModal(); toast('Approval requested'); renderApprovals(id); renderActivity(id);
+}
+// internal status change cannot fabricate client sign-off — only the client portal can set approvedBy:'client'
+function designerDecide(id, approvalId, status){
+  const a = state.approvals[id].find(x=>x.id===approvalId);
+  if(!a) return;
+  if(!a.history) a.history = [];
+  if(a.status !== 'pending' || a.approvedBy){
+    a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date});
+  }
+  a.status = status; a.approvedBy = 'designer'; a.date = new Date().toISOString().slice(0,10);
+  save(state); logActivity(id, `${a.title} status: ${status} by designer`); renderApprovals(id); renderActivity(id);
+}
+
+// Notes tab: was flat white cards with the date buried as tiny gray text below the body,
+// giving every note identical visual weight regardless of age. Gives each note a terracotta
+// accent spine (echoing the milestone/dashboard accent-border language used elsewhere),
+// promotes the date to a proper header line with a relative-age badge, and groups notes
+// under "Today" / "Earlier" so the list reads top-to-bottom instead of as one gray blob.
+function renderNotes(id){
+  const rows = state.notes[id] || [];
+  document.getElementById('note-empty').classList.toggle('hidden', rows.length>0);
+  const sorted = rows.slice().reverse();
+  const todayStr = new Date().toISOString().slice(0,10);
+  const noteCardHtml = n => `
+    <div class="card p-4" style="border-left:3px solid var(--terracotta);">
+      <div class="flex items-center justify-between gap-3 mb-1.5">
+        <span class="text-xs font-semibold uppercase tracking-wide" style="color:var(--terracotta-dark)">${fmtShortDate(n.date)}</span>
+        ${n.date===todayStr ? `<span class="tag tag-status" style="font-size:.65rem;">Today</span>` : ''}
+      </div>
+      <p class="text-sm whitespace-pre-wrap leading-relaxed">${n.text}</p>
+    </div>
+  `;
+  const todayNotes = sorted.filter(n=>n.date===todayStr);
+  const earlierNotes = sorted.filter(n=>n.date!==todayStr);
+  let html = '';
+  if(todayNotes.length){
+    html += `<div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Today</div>`;
+    html += `<div class="space-y-3 mb-5">${todayNotes.map(noteCardHtml).join('')}</div>`;
+  }
+  if(earlierNotes.length){
+    if(todayNotes.length) html += `<div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Earlier</div>`;
+    html += `<div class="space-y-3">${earlierNotes.map(noteCardHtml).join('')}</div>`;
+  }
+  document.getElementById('note-list').innerHTML = html;
+}
+function openNewNote(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add note</h3>
+    <div class="space-y-3">
+      <textarea id="nn-text" placeholder="Note" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="4"></textarea>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createNote('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createNote(id){
+  const text = document.getElementById('nn-text').value.trim();
+  if(!text){ toast('Note text required'); return; }
+  if(!state.notes[id]) state.notes[id] = [];
+  state.notes[id].push({id:uid('n'), text, date:new Date().toISOString().slice(0,10)});
+  save(state); logActivity(id, 'Added a note'); closeModal(); toast('Note added'); renderNotes(id); renderActivity(id);
+}
+
+/* ---------- contacts / suppliers ---------- */
+// simple keyword heuristic bucketing a contact's free-text role into a directory section
+const CONTACT_GROUP_ORDER = ['Supplier','Trade','Other'];
+function inferContactGroup(role){
+  const r = (role||'').toLowerCase();
+  if(/supplier|vendor|manufactur|showroom|retailer|furniture|lighting|fabric|joiner|upholster/.test(r)) return 'Supplier';
+  if(/trade|electrician|plumber|builder|contractor|tiler|painter|carpenter|installer|landscap|plaster|glazier|hvac/.test(r)) return 'Trade';
+  return 'Other';
+}
+// single contact card — shared by every group in the directory
+function contactCardHtml(id, c){
+  const chipLabel = c.role || inferContactGroup(c.role);
+  return `
+    <div class="card p-4">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-start gap-2.5">
+          ${personAvatarHtml(c.name)}
+          <div>
+            <h4 class="font-medium">${c.name}</h4>
+            ${c.role ? `<div class="mt-1">${categoryChipHtml(chipLabel)}</div>` : ''}
+          </div>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button onclick="editContact('${id}','${c.id}')" title="Edit contact" class="text-sm leading-none hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft)">&#9998;</button>
+          <button onclick="deleteContact('${id}','${c.id}')" title="Remove contact" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+        </div>
+      </div>
+      ${(c.phone || c.email) ? `
+        <div class="mt-2 pt-2 border-t text-sm space-y-0.5" style="border-color:var(--line); color:var(--ink-soft)">
+          ${c.phone ? `<p>${c.phone}</p>` : ''}
+          ${c.email ? `<p>${c.email}</p>` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+function renderContacts(id){
+  if(!state.contacts) state.contacts = {};
+  const rows = state.contacts[id] || [];
+  const emptyEl = document.getElementById('contact-empty');
+  if(emptyEl) emptyEl.classList.toggle('hidden', rows.length>0);
+  const listEl = document.getElementById('contact-list');
+  if(!listEl) return;
+  if(!rows.length){ listEl.innerHTML = ''; return; }
+  const groups = new Map(CONTACT_GROUP_ORDER.map(g=>[g, []]));
+  rows.forEach(c=>{ groups.get(inferContactGroup(c.role)).push(c); });
+  let html = '';
+  CONTACT_GROUP_ORDER.forEach(group=>{
+    const members = groups.get(group);
+    if(!members.length) return;
+    html += `
+      <div class="sm:col-span-2 text-xs font-semibold uppercase tracking-wide mt-2 first:mt-0" style="color:var(--ink-soft)">${group} <span style="color:var(--ink-soft)">(${members.length})</span></div>
+      ${members.map(c=>contactCardHtml(id, c)).join('')}
+    `;
+  });
+  listEl.innerHTML = html;
+}
+function openNewContact(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add contact</h3>
+    <div class="space-y-3">
+      <input id="nk-name" placeholder="Name / company" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-role" placeholder="Role (e.g. Supplier, Electrician)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-phone" placeholder="Phone" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-email" placeholder="Email" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createContact('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createContact(id){
+  const name = document.getElementById('nk-name').value.trim();
+  if(!name){ toast('Name required'); return; }
+  if(!state.contacts) state.contacts = {};
+  if(!state.contacts[id]) state.contacts[id] = [];
+  state.contacts[id].push({
+    id: uid('ct'),
+    name,
+    role: document.getElementById('nk-role').value.trim(),
+    phone: document.getElementById('nk-phone').value.trim(),
+    email: document.getElementById('nk-email').value.trim()
+  });
+  save(state); logActivity(id, `Added contact: ${name}`); closeModal(); toast('Contact added'); renderContacts(id); renderActivity(id);
+}
+function editContact(projId, contactId){
+  const rows = state.contacts && state.contacts[projId];
+  if(!rows) return;
+  const c = rows.find(x=>x.id===contactId);
+  if(!c) return;
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Edit contact</h3>
+    <div class="space-y-3">
+      <input id="nk-name" value="${c.name||''}" placeholder="Name / company" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-role" value="${c.role||''}" placeholder="Role (e.g. Supplier, Electrician)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-phone" value="${c.phone||''}" placeholder="Phone" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nk-email" value="${c.email||''}" placeholder="Email" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveContact('${projId}','${contactId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function saveContact(projId, contactId){
+  const rows = state.contacts && state.contacts[projId];
+  if(!rows) return;
+  const c = rows.find(x=>x.id===contactId);
+  if(!c) return;
+  const name = document.getElementById('nk-name').value.trim();
+  if(!name){ toast('Name required'); return; }
+  c.name = name;
+  c.role = document.getElementById('nk-role').value.trim();
+  c.phone = document.getElementById('nk-phone').value.trim();
+  c.email = document.getElementById('nk-email').value.trim();
+  save(state); logActivity(projId, `Updated contact: ${name}`); closeModal(); toast('Contact updated'); renderContacts(projId); renderActivity(projId);
+}
+function deleteContact(projId, contactId){
+  const rows = state.contacts && state.contacts[projId];
+  if(!rows) return;
+  if(!confirm('Remove this contact?')) return;
+  const idx = rows.findIndex(x=>x.id===contactId);
+  if(idx === -1) return;
+  const removedName = rows[idx].name;
+  rows.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed contact: ${removedName}`);
+  renderContacts(projId);
+  renderActivity(projId);
+}
+
+/* ---------- milestones (horizontal timeline) ---------- */
+// done -> filled terracotta node; not done + targetDate in the past -> red-outline "overdue";
+// otherwise -> neutral outline "upcoming".
+function milestoneNodeStatus(m){
+  if(m.done) return 'done';
+  const target = new Date(m.targetDate + 'T00:00:00');
+  if(!isNaN(target.getTime()) && target.getTime() < Date.now()) return 'overdue';
+  return 'upcoming';
+}
+function renderMilestones(id){
+  const rows = (state.milestones && state.milestones[id]) || [];
+  const emptyEl = document.getElementById('milestone-empty');
+  const timelineEl = document.getElementById('milestone-timeline');
+  if(!timelineEl) return;
+  if(emptyEl) emptyEl.classList.toggle('hidden', rows.length>0);
+  timelineEl.classList.toggle('hidden', rows.length===0);
+  if(!rows.length){ timelineEl.innerHTML = ''; return; }
+
+  const sorted = rows.slice().sort((a,b)=>(a.targetDate||'').localeCompare(b.targetDate||''));
+  const fmtDate = d => {
+    const dt = new Date(d + 'T00:00:00');
+    return isNaN(dt.getTime()) ? (d||'') : dt.toLocaleDateString(undefined, {day:'numeric', month:'short', year:'numeric'});
+  };
+  const nodeWidth = 160;
+  const headerHeight = 48; // circle sits vertically centered in this band, so the connecting line (also centered here) lines up regardless of the delete affordance above it
+  const lineCenter = headerHeight / 2;
+
+  const nodesHtml = sorted.map(m=>{
+    const status = milestoneNodeStatus(m);
+    let circleStyle, innerHtml;
+    if(status === 'done'){
+      circleStyle = 'background:var(--terracotta); border:2px solid var(--terracotta);';
+      innerHtml = `<span style="color:#fff; font-size:.75rem; line-height:1;">&#10003;</span>`;
+    } else if(status === 'overdue'){
+      circleStyle = 'background:#fff; border:2px solid var(--red);';
+      innerHtml = '';
+    } else {
+      circleStyle = 'background:#fff; border:2px solid var(--line);';
+      innerHtml = '';
+    }
+    const labelColor = status === 'overdue' ? 'var(--red)' : 'var(--ink)';
+    return `
+      <div class="flex flex-col items-center" style="width:${nodeWidth}px; flex-shrink:0;">
+        <div class="relative w-full flex items-center justify-center" style="height:${headerHeight}px;">
+          <button onclick="deleteMilestone('${id}','${m.id}')" title="Remove milestone" class="absolute top-0 right-4 text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+          <button onclick="toggleMilestone('${id}','${m.id}')" title="${status==='done' ? 'Mark as not done' : 'Mark as done'}" class="rounded-full flex items-center justify-center transition-shadow hover:shadow-md" style="width:28px; height:28px; ${circleStyle}">${innerHtml}</button>
+        </div>
+        <div class="mt-1 text-center px-1">
+          <div class="text-sm font-medium" style="color:${labelColor}">${m.label}</div>
+          <div class="text-xs mt-0.5" style="color:var(--ink-soft)">${fmtDate(m.targetDate)}</div>
+          ${status === 'overdue' ? `<div class="text-xs font-semibold mt-0.5" style="color:var(--red)">Overdue</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  timelineEl.innerHTML = `
+    <div class="relative" style="min-width:${sorted.length * nodeWidth}px;">
+      <div class="absolute" style="top:${lineCenter}px; left:${nodeWidth/2}px; right:${nodeWidth/2}px; height:2px; background:var(--line);"></div>
+      <div class="flex items-start relative">${nodesHtml}</div>
+    </div>
+  `;
+}
+function toggleMilestone(projId, milestoneId){
+  const rows = state.milestones && state.milestones[projId];
+  if(!rows) return;
+  const m = rows.find(x=>x.id===milestoneId);
+  if(!m) return;
+  m.done = !m.done;
+  save(state);
+  logActivity(projId, `${m.done ? 'Completed' : 'Reopened'} milestone: ${m.label}`);
+  renderMilestones(projId); renderNextActions(projId); renderProjectStats(projId); renderActivity(projId);
+}
+function openNewMilestone(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add milestone</h3>
+    <div class="space-y-3">
+      <input id="nm-label" placeholder="Milestone label" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nm-date" type="date" value="${new Date().toISOString().slice(0,10)}" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createMilestone('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createMilestone(id){
+  const label = document.getElementById('nm-label').value.trim();
+  const targetDate = document.getElementById('nm-date').value;
+  if(!label || !targetDate){ toast('Label and date required'); return; }
+  if(!state.milestones) state.milestones = {};
+  if(!state.milestones[id]) state.milestones[id] = [];
+  state.milestones[id].push({id: uid('m'), label, targetDate, done:false});
+  save(state); logActivity(id, `Added milestone: ${label}`); closeModal(); toast('Milestone added');
+  renderMilestones(id); renderNextActions(id); renderProjectStats(id); renderActivity(id);
+}
+function deleteMilestone(projId, milestoneId){
+  const rows = state.milestones && state.milestones[projId];
+  if(!rows) return;
+  if(!confirm('Remove this milestone?')) return;
+  const idx = rows.findIndex(m=>m.id===milestoneId);
+  if(idx === -1) return;
+  const removedLabel = rows[idx].label;
+  rows.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed milestone: ${removedLabel}`);
+  renderMilestones(projId); renderNextActions(projId); renderProjectStats(projId); renderActivity(projId);
+}
+
+// short relative/date label for an activity timestamp
+function activityTimeLabel(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if(mins < 1) return 'just now';
+  if(mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if(hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if(days < 7) return `${days}d ago`;
+  return d.toISOString().slice(0,10);
+}
+function renderActivity(id){
+  const rows = (state.activity && state.activity[id]) || [];
+  const emptyEl = document.getElementById('activity-empty');
+  if(!emptyEl) return;
+  emptyEl.classList.toggle('hidden', rows.length>0);
+  const sorted = rows.slice().reverse();
+  document.getElementById('activity-list').innerHTML = sorted.map(a=>`
+    <div class="card px-4 py-2.5 flex items-center justify-between gap-3">
+      <p class="text-sm">${a.text}</p>
+      <p class="text-xs whitespace-nowrap" style="color:var(--ink-soft)">${activityTimeLabel(a.ts)}</p>
+    </div>
+  `).join('');
+}
+
+function renderSiteTasks(id){
+  const rows = state.tradesTasks[id] || [];
+  const emptyEl = document.getElementById('site-task-empty');
+  if(emptyEl) emptyEl.classList.toggle('hidden', rows.length>0);
+  const progressEl = document.getElementById('site-task-progress');
+  if(progressEl){
+    const total = rows.length;
+    const done = rows.filter(t=>t.done).length;
+    if(!total){
+      progressEl.innerHTML = '';
+    } else {
+      const pct = Math.min(100, (done / total) * 100);
+      progressEl.innerHTML = `
+        <div class="text-xs font-medium" style="color:var(--ink-soft)">${done} of ${total} tasks done</div>
+        <div class="mt-1 w-full h-1.5 rounded-full overflow-hidden" style="background:var(--paper-2)">
+          <div class="h-full rounded-full" style="width:${pct}%; background:var(--terracotta)"></div>
+        </div>
+      `;
+    }
+  }
+  const listEl = document.getElementById('site-task-list');
+  if(!listEl) return;
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  const now = Date.now();
+  // does this task's dueDate fall in the past? (undone only — a done task is never "overdue")
+  const isOverdue = t => {
+    if(t.done || !t.dueDate) return false;
+    const due = new Date(t.dueDate + 'T00:00:00');
+    return !isNaN(due.getTime()) && due.getTime() < now;
+  };
+  // single task row — shared by the Overdue/Upcoming/Done groups below, same row markup
+  // and functionality (toggle/delete/assignee/due-date) as before the grouping split
+  const taskRowHtml = t => {
+    const assignee = t.assigneeContactId ? contacts.find(c=>c.id===t.assigneeContactId) : null;
+    const assigneeHtml = assignee
+      ? `<span class="inline-flex items-center gap-1.5" title="${assignee.name}">${personAvatarHtml(assignee.name)}<span class="text-xs" style="color:var(--ink-soft)">${assignee.name}</span></span>`
+      : '';
+    let dueHtml = '';
+    if(t.dueDate){
+      dueHtml = isOverdue(t)
+        ? `<span class="text-xs font-semibold" style="color:var(--red)">Overdue — due ${fmtShortDate(t.dueDate)}</span>`
+        : `<span class="text-xs" style="color:var(--ink-soft)">Due ${fmtShortDate(t.dueDate)}</span>`;
+    }
+    return `
+    <div class="card px-4 py-2.5 flex items-center gap-3">
+      <input type="checkbox" ${t.done?'checked':''} onchange="toggleTradeTask('${id}','${t.id}', this.checked)" class="w-4 h-4">
+      <span class="flex-1 text-sm ${t.done?'line-through opacity-50':''}">${t.task}</span>
+      ${assigneeHtml}
+      ${dueHtml}
+      <button onclick="deleteTradeTask('${id}','${t.id}')" title="Remove task" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
+    </div>
+  `;
+  };
+  const overdueTasks = rows.filter(isOverdue);
+  const upcomingTasks = rows.filter(t=>!t.done && !isOverdue(t));
+  const doneTasks = rows.filter(t=>t.done);
+  let html = '';
+  if(overdueTasks.length){
+    html += `
+      <div class="mb-4">
+        <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--red)">Overdue (${overdueTasks.length})</div>
+        <div class="space-y-2">${overdueTasks.map(taskRowHtml).join('')}</div>
+      </div>
+    `;
+  }
+  if(upcomingTasks.length){
+    html += `
+      <div class="mb-4">
+        <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Upcoming (${upcomingTasks.length})</div>
+        <div class="space-y-2">${upcomingTasks.map(taskRowHtml).join('')}</div>
+      </div>
+    `;
+  }
+  if(doneTasks.length){
+    html += `
+      <details class="mt-2">
+        <summary class="text-xs font-semibold uppercase tracking-wide cursor-pointer select-none" style="color:var(--ink-soft)">Done (${doneTasks.length})</summary>
+        <div class="space-y-2 mt-2 opacity-60">${doneTasks.map(taskRowHtml).join('')}</div>
+      </details>
+    `;
+  }
+  listEl.innerHTML = html;
+}
+// shared <select> of this project's contacts for assigning a site task, plus "Unassigned"
+function siteTaskAssigneeSelectHtml(id, selectedId){
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  const options = contacts.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
+  return `
+    <select id="nx-assignee" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <option value="">Unassigned</option>${options}
+    </select>
+  `;
+}
+function openNewTradeTask(){
+  const id = currentProjectId();
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add site task</h3>
+    <div class="space-y-3">
+      <input id="nx-task" placeholder="Task" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Due date (optional)</label>
+        <input id="nx-due" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Assignee</label>
+        ${siteTaskAssigneeSelectHtml(id, '')}
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createTradeTask('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Add</button>
+    </div>
+  `);
+}
+function createTradeTask(id){
+  const task = document.getElementById('nx-task').value.trim();
+  if(!task){ toast('Task text required'); return; }
+  if(!state.tradesTasks[id]) state.tradesTasks[id] = [];
+  const dueEl = document.getElementById('nx-due');
+  const assigneeEl = document.getElementById('nx-assignee');
+  state.tradesTasks[id].push({
+    id: uid('x'),
+    task,
+    done:false,
+    dueDate: (dueEl && dueEl.value) || null,
+    assigneeContactId: (assigneeEl && assigneeEl.value) || null
+  });
+  save(state); logActivity(id, `Added site task: ${task}`); closeModal(); toast('Task added'); renderSiteTasks(id); renderTrades(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
+}
+function deleteTradeTask(projId, taskId){
+  const rows = state.tradesTasks[projId];
+  if(!rows) return;
+  const idx = rows.findIndex(t=>t.id===taskId);
+  if(idx === -1) return;
+  const removedTask = rows[idx].task;
+  rows.splice(idx, 1);
+  save(state);
+  logActivity(projId, `Removed site task: ${removedTask}`);
+  renderSiteTasks(projId);
+  renderTrades(projId);
+  renderActivity(projId);
+  renderNextActions(projId);
+  renderProjectStats(projId);
+}
+
+/* ---------- job-site (trades) view ---------- */
+function renderTrades(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p){ document.getElementById('trades-proj-name').textContent = 'Project not found'; document.getElementById('trades-list').innerHTML=''; return; }
+  document.getElementById('trades-proj-name').textContent = p.name;
+  const tasks = state.tradesTasks[id] || [];
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  document.getElementById('trades-list').innerHTML = tasks.length ? tasks.map(t=>{
+    const assignee = t.assigneeContactId ? contacts.find(c=>c.id===t.assigneeContactId) : null;
+    const metaBits = [];
+    if(assignee) metaBits.push(`Assigned to ${assignee.name}`);
+    if(t.dueDate){
+      const due = new Date(t.dueDate + 'T00:00:00');
+      const overdue = !t.done && !isNaN(due.getTime()) && due.getTime() < Date.now();
+      metaBits.push(overdue ? `Overdue — due ${fmtShortDate(t.dueDate)}` : `Due ${fmtShortDate(t.dueDate)}`);
+    }
+    const overdueMeta = !t.done && t.dueDate && new Date(t.dueDate + 'T00:00:00').getTime() < Date.now();
+    const metaHtml = metaBits.length
+      ? `<div class="text-xs mt-0.5" style="color:${overdueMeta ? '#f3a68c' : 'rgba(255,255,255,.6)'}">${metaBits.join(' · ')}</div>`
+      : '';
+    return `
+    <label class="flex items-start gap-3 p-3 rounded-xl" style="background:rgba(255,255,255,.06)">
+      <input type="checkbox" ${t.done?'checked':''} onchange="toggleTradeTask('${id}','${t.id}', this.checked)" class="mt-1 w-5 h-5">
+      <span class="flex-1">
+        <span class="block ${t.done?'line-through opacity-50':''}">${t.task}</span>
+        ${metaHtml}
+      </span>
+    </label>
+  `;
+  }).join('') : `<p class="text-sm opacity-60">No tasks posted for this site yet.</p>`;
+}
+function toggleTradeTask(id, taskId, checked){
+  const t = state.tradesTasks[id].find(x=>x.id===taskId);
+  if(t){ t.done = checked; save(state); }
+  renderSiteTasks(id);
+  renderTrades(id);
+  renderNextActions(id);
+  renderProjectStats(id);
+}
+
+/* ---------- client portal ---------- */
+function renderPortal(id){
+  const p = state.projects.find(x=>x.id===id);
+  if(!p){ document.getElementById('portal-proj-name').textContent = 'Project not found'; return; }
+  document.getElementById('portal-proj-name').textContent = p.name;
+  document.getElementById('portal-proj-client').textContent = 'Prepared for ' + p.client;
+  const clips = (state.clips[id]||[]).filter(c=>c.forClient);
+  document.getElementById('portal-moodboard').innerHTML = clips.length ? clips.map(c=>`
+    <div class="card overflow-hidden">
+      <div class="relative h-32">
+        <img src="${c.image}" alt="${c.title}" class="w-full h-32 object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+        <div class="hidden w-full h-32 items-center justify-center text-xs" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>
+      </div>
+      <div class="p-2 text-sm">${c.title}</div>
+    </div>
+  `).join('') : `<p class="text-sm col-span-full" style="color:var(--ink-soft)">Nothing shared yet.</p>`;
+
+  const approvals = state.approvals[id] || [];
+  document.getElementById('portal-approvals').innerHTML = approvals.length ? approvals.map(a=>`
+    <div class="card p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <h4 class="font-medium">${a.title}</h4>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">${a.description}</p>
+          ${requestedAgoHtml(a)}
+          ${a.date ? `<p class="text-xs mt-2" style="color:var(--ink-soft)">${a.status==='approved'?'Approved':'Rejected'} by ${a.approvedBy} on ${a.date}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="tag tag-${a.status}">${a.status}</span>
+          ${pendingBadgeHtml(a)}
+        </div>
+      </div>
+      ${approvalHistoryHtml(a)}
+      <div class="flex gap-2 mt-3">
+        ${a.status!=='approved' ? `<button onclick="clientDecide('${id}','${a.id}','approved')" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Approve</button>` : ''}
+        ${a.status!=='rejected' ? `<button onclick="clientDecide('${id}','${a.id}','rejected')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
+      </div>
+    </div>
+  `).join('') : `<p class="text-sm" style="color:var(--ink-soft)">Nothing pending.</p>`;
+}
+function clientDecide(id, approvalId, status){
+  const a = state.approvals[id].find(x=>x.id===approvalId);
+  if(!a) return;
+  if(!a.history) a.history = [];
+  if(a.status !== 'pending' || a.approvedBy){
+    a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date});
+  }
+  a.status = status; a.approvedBy = 'client'; a.date = new Date().toISOString().slice(0,10);
+  save(state); logActivity(id, `${a.title} status: ${status} by client`); renderPortal(id); renderActivity(id);
+}
+
+/* ---------- project header "More" menu ---------- */
+function toggleProjectMoreMenu(e){
+  if(e) e.stopPropagation();
+  const menu = document.getElementById('proj-more-menu');
+  if(!menu) return;
+  menu.classList.toggle('hidden');
+}
+function closeProjectMoreMenu(){
+  const menu = document.getElementById('proj-more-menu');
+  if(menu) menu.classList.add('hidden');
+}
+document.addEventListener('click', (e)=>{
+  const menu = document.getElementById('proj-more-menu');
+  if(!menu || menu.classList.contains('hidden')) return;
+  if(!menu.contains(e.target)) closeProjectMoreMenu();
+});
+
+/* ---------- modal ---------- */
+function showModal(html){
+  document.getElementById('modal-body').innerHTML = html;
+  const bd = document.getElementById('modal-backdrop');
+  bd.classList.remove('hidden'); bd.classList.add('flex');
+}
+function closeModal(){
+  const bd = document.getElementById('modal-backdrop');
+  bd.classList.add('hidden'); bd.classList.remove('flex');
+}
+document.getElementById('modal-backdrop').addEventListener('click', e=>{
+  if(e.target.id === 'modal-backdrop') closeModal();
+});
+
+route();
+</script>
+</body>
+</html>
