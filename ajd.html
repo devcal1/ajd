@@ -673,6 +673,21 @@ function getTeamWorkload(){
         }
       }
     });
+    const board = state.boards && state.boards[p.id];
+    if(board){
+      const lastColId = board.columns && board.columns.length ? board.columns[board.columns.length-1].id : null;
+      (board.cards||[]).forEach(c=>{
+        if(!c.assigneeContactId) return;
+        const contact = contacts.find(ct=>ct.id===c.assigneeContactId);
+        if(!contact) return;
+        const bucket = ensure(contact.name);
+        bucket.projects.set(p.id, p.name);
+        if(c.columnId !== lastColId){
+          bucket.openTasks++;
+          if(isBoardCardOverdue(c, board.columns||[])) bucket.overdueTasks++;
+        }
+      });
+    }
   });
   return Object.keys(people)
     .sort((a,b)=> people[b].hours - people[a].hours || a.localeCompare(b))
@@ -768,6 +783,15 @@ function getDeadlineEntries(){
       if(isNaN(d.getTime())) return;
       entries.push({date:t.dueDate, time:d.getTime(), kind:'Task', label:t.task, projId:p.id, projName:p.name, overdue: d.getTime() < now});
     });
+    const board = state.boards && state.boards[p.id];
+    if(board){
+      (board.cards||[]).forEach(c=>{
+        if(!c.dueDate) return;
+        const d = new Date(c.dueDate + 'T00:00:00');
+        if(isNaN(d.getTime())) return;
+        entries.push({date:c.dueDate, time:d.getTime(), kind:'Board', label:c.title, projId:p.id, projName:p.name, overdue: isBoardCardOverdue(c, board.columns||[])});
+      });
+    }
   });
   return entries.sort((a,b)=>a.time - b.time);
 }
@@ -1370,6 +1394,12 @@ function getNextActionItems(id){
   }).length;
   if(overdueSiteTasks > 0){
     items.push(`${overdueSiteTasks} site task${overdueSiteTasks===1?'':'s'} overdue`);
+  }
+
+  const board = state.boards && state.boards[id];
+  const overdueBoardCards = board ? (board.cards||[]).filter(c=>isBoardCardOverdue(c, board.columns||[])).length : 0;
+  if(overdueBoardCards > 0){
+    items.push(`${overdueBoardCards} board card${overdueBoardCards===1?'':'s'} overdue`);
   }
 
   const timeRows = state.time[id] || [];
@@ -2664,11 +2694,11 @@ function renderSiteTasks(id){
   listEl.innerHTML = html;
 }
 // shared <select> of this project's contacts for assigning a site task, plus "Unassigned"
-function siteTaskAssigneeSelectHtml(id, selectedId){
+function siteTaskAssigneeSelectHtml(id, selectedId, selectId){
   const contacts = (state.contacts && state.contacts[id]) || [];
   const options = contacts.map(c=>`<option value="${c.id}" ${c.id===selectedId?'selected':''}>${c.name}</option>`).join('');
   return `
-    <select id="nx-assignee" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <select id="${selectId || 'nx-assignee'}" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <option value="">Unassigned</option>${options}
     </select>
   `;
@@ -2751,15 +2781,40 @@ function renderBoard(id){
   `;
   }).join('');
 }
+// is this board card overdue? dueDate in the past AND not in the last ("done") column —
+// same last-column-exclusion rule used everywhere else a board card's overdue status matters
+function isBoardCardOverdue(card, columns){
+  if(!card.dueDate || !columns.length) return false;
+  const lastColId = columns[columns.length-1].id;
+  if(card.columnId === lastColId) return false;
+  const due = new Date(card.dueDate + 'T00:00:00');
+  return !isNaN(due.getTime()) && due.getTime() < Date.now();
+}
 // single board card — title, a move-to-column select, and a delete button
 function boardCardHtml(id, card, columns){
   const options = columns.map(col=>`<option value="${col.id}" ${col.id===card.columnId?'selected':''}>${col.name}</option>`).join('');
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  const assignee = card.assigneeContactId ? contacts.find(c=>c.id===card.assigneeContactId) : null;
+  const overdue = isBoardCardOverdue(card, columns);
+  let metaHtml = '';
+  if(assignee || card.dueDate){
+    const assigneeHtml = assignee
+      ? `<span class="inline-flex items-center gap-1" title="${assignee.name}">${personAvatarHtml(assignee.name)}</span>`
+      : '';
+    const dueHtml = card.dueDate
+      ? (overdue
+        ? `<span class="text-xs font-semibold" style="color:var(--red)">Overdue — ${fmtShortDate(card.dueDate)}</span>`
+        : `<span class="text-xs" style="color:var(--ink-soft)">${fmtShortDate(card.dueDate)}</span>`)
+      : '';
+    metaHtml = `<div class="flex items-center gap-1.5 mt-1.5">${assigneeHtml}${dueHtml}</div>`;
+  }
   return `
     <div class="rounded-lg p-2 text-sm" style="background:var(--paper-2); border:1px solid var(--line);">
       <div class="flex items-start justify-between gap-2">
         <span class="flex-1">${card.title}</span>
         <button onclick="deleteBoardCard('${id}','${card.id}')" title="Remove card" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
       </div>
+      ${metaHtml}
       <select onchange="moveBoardCard('${id}','${card.id}', this.value)" class="w-full mt-2 border rounded-lg px-2 py-1 text-xs" style="border-color:var(--line)">
         ${options}
       </select>
@@ -2784,7 +2839,13 @@ function createBoardColumn(id){
   if(!name){ toast('Column name required'); return; }
   if(!state.boards) state.boards = {};
   if(!state.boards[id]) state.boards[id] = {columns: defaultBoardColumns(), cards: []};
-  state.boards[id].columns.push({id: uid('bc'), name});
+  // Insert before the current last column rather than appending after it. isBoardCardOverdue
+  // treats "the last column" as the done/terminal state, recomputed fresh from array position
+  // each render — appending here would silently make the old last column no longer last,
+  // retroactively flipping already-resolved cards back to "overdue" everywhere (digest,
+  // deadlines, team) even though nobody touched them.
+  const cols = state.boards[id].columns;
+  cols.splice(Math.max(cols.length - 1, 0), 0, {id: uid('bc'), name});
   save(state);
   logActivity(id, `Added board column: ${name}`);
   closeModal(); toast('Column added');
@@ -2809,6 +2870,14 @@ function openNewBoardCard(colId){
     <h3 class="font-display text-xl mb-4">Add card</h3>
     <div class="space-y-3">
       <input id="bd-title" placeholder="Card title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Due date (optional)</label>
+        <input id="bd-due" type="date" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Assignee</label>
+        ${siteTaskAssigneeSelectHtml(id, '', 'bd-assignee')}
+      </div>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -2821,11 +2890,20 @@ function createBoardCard(id, colId){
   if(!title){ toast('Card title required'); return; }
   if(!state.boards) state.boards = {};
   if(!state.boards[id]) state.boards[id] = {columns: defaultBoardColumns(), cards: []};
-  state.boards[id].cards.push({id: uid('bd'), columnId: colId, title, createdAt: new Date().toISOString()});
+  const dueEl = document.getElementById('bd-due');
+  const assigneeEl = document.getElementById('bd-assignee');
+  state.boards[id].cards.push({
+    id: uid('bd'),
+    columnId: colId,
+    title,
+    createdAt: new Date().toISOString(),
+    dueDate: (dueEl && dueEl.value) || null,
+    assigneeContactId: (assigneeEl && assigneeEl.value) || null
+  });
   save(state);
   logActivity(id, `Added board card: ${title}`);
   closeModal(); toast('Card added');
-  renderBoard(id); renderActivity(id);
+  renderBoard(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
 }
 function moveBoardCard(id, cardId, newColId){
   const board = state.boards && state.boards[id];
@@ -2837,7 +2915,7 @@ function moveBoardCard(id, cardId, newColId){
   card.columnId = newColId;
   save(state);
   logActivity(id, `Moved card "${card.title}" from ${fromCol?fromCol.name:'?'} to ${toCol?toCol.name:'?'}`);
-  renderBoard(id); renderActivity(id);
+  renderBoard(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
 }
 function deleteBoardCard(projId, cardId){
   const board = state.boards && state.boards[projId];
@@ -2848,7 +2926,7 @@ function deleteBoardCard(projId, cardId){
   board.cards.splice(idx, 1);
   save(state);
   logActivity(projId, `Removed board card: ${removedTitle}`);
-  renderBoard(projId); renderActivity(projId);
+  renderBoard(projId); renderActivity(projId); renderNextActions(projId); renderProjectStats(projId);
 }
 
 /* ---------- job-site (trades) view ---------- */
