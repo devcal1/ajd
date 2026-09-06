@@ -170,6 +170,7 @@
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="approvals" onclick="setTab('approvals')">Approvals</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="milestones" onclick="setTab('milestones')">Milestones</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="notes" onclick="setTab('notes')">Notes</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="comments" onclick="setTab('comments')">Client Comments</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="board" onclick="setTab('board')">Board</button>
@@ -267,6 +268,19 @@
         <div id="note-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No notes yet.</div>
       </div>
 
+      <div id="tab-comments" class="tab-pane hidden">
+        <h3 class="font-display text-xl mb-1">Client Comments</h3>
+        <p class="text-sm mb-3" style="color:var(--ink-soft)">Visible to the client on their portal</p>
+        <div class="card p-4 mb-4">
+          <textarea id="comment-text" placeholder="Write a comment..." class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="border-color:var(--line)" rows="3"></textarea>
+          <div class="flex justify-end">
+            <button onclick="postComment(currentProjectId())" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Post</button>
+          </div>
+        </div>
+        <div id="comment-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">No comments yet.</div>
+        <div id="comment-list" class="space-y-3"></div>
+      </div>
+
       <div id="tab-contacts" class="tab-pane hidden">
         <div class="flex justify-end mb-3">
           <button onclick="openNewContact()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add contact</button>
@@ -357,6 +371,16 @@
 
     <h2 class="font-display text-xl mb-3">Approvals</h2>
     <div id="portal-approvals" class="space-y-3"></div>
+
+    <h2 class="font-display text-xl mb-3 mt-10">Questions &amp; Comments</h2>
+    <div class="card p-4 mb-4">
+      <textarea id="portal-comment-text" placeholder="Ask a question or leave a comment..." class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="border-color:var(--line)" rows="3"></textarea>
+      <div class="flex justify-end">
+        <button onclick="postPortalComment(currentProjectId())" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Post</button>
+      </div>
+    </div>
+    <div id="portal-comment-empty" class="hidden text-center py-10 text-sm mb-10" style="color:var(--ink-soft)">No comments yet.</div>
+    <div id="portal-comment-list" class="space-y-3 mb-10"></div>
   </div>
 </div>
 
@@ -406,6 +430,10 @@ function seed(){
       p2: []
     },
     notes: {
+      p1: [],
+      p2: []
+    },
+    comments: {
       p1: [],
       p2: []
     },
@@ -466,9 +494,13 @@ function save(s){ localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
 let state = load();
 if(!state.rates) state.rates = {}; // migrate state saved before hourly rates existed
 if(!state.boards) state.boards = {}; // migrate state saved before the board tab existed
+if(!state.comments) state.comments = {}; // migrate state saved before client comments existed
 let boardsMigrated = false;
-state.projects.forEach(p=>{ if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; } });
-if(boardsMigrated) save(state); // persist migrated boards immediately so a reload before any board edit doesn't regenerate fresh column ids
+state.projects.forEach(p=>{
+  if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; }
+  if(!state.comments[p.id]){ state.comments[p.id] = []; boardsMigrated = true; }
+});
+if(boardsMigrated) save(state); // persist migrated boards/comments immediately so a reload before any edit doesn't regenerate fresh column ids
 
 function uid(prefix){ return prefix + Math.random().toString(36).slice(2,9); }
 function toast(msg){
@@ -969,6 +1001,8 @@ function createProject(){
   const id = uid('p');
   state.projects.push({id, name, client: client || '—', status:'Concept', cover:'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=600', budget, archived:false});
   state.ffe[id] = []; state.time[id] = []; state.clips[id] = []; state.approvals[id] = []; state.tradesTasks[id] = []; state.notes[id] = []; state.activity[id] = [];
+  if(!state.comments) state.comments = {};
+  state.comments[id] = [];
   if(!state.contacts) state.contacts = {};
   state.contacts[id] = [];
   if(!state.milestones) state.milestones = {};
@@ -1086,6 +1120,7 @@ function deleteProject(id){
   delete state.tradesTasks[id];
   delete state.notes[id];
   delete state.activity[id];
+  if(state.comments) delete state.comments[id];
   if(state.contacts) delete state.contacts[id];
   if(state.milestones) delete state.milestones[id];
   if(state.invoices) delete state.invoices[id];
@@ -1318,7 +1353,7 @@ function renderProject(id){
   setTab(activeTab);
   renderProjectStats(id);
   renderNextActions(id);
-  renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id); renderBoard(id);
+  renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderComments(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id); renderBoard(id);
 }
 
 // stat pills below the hero banner — budget + FF&E spent (clickable to edit budget) and,
@@ -2355,6 +2390,116 @@ function createNote(id){
   save(state); logActivity(id, 'Added a note'); closeModal(); toast('Note added'); renderNotes(id); renderActivity(id);
 }
 
+/* ---------- client comments (shared between the internal tab and the client portal) ---------- */
+// Same Today/Earlier grouping and card treatment as renderNotes, but each entry carries an
+// author (designer or client) shown via personAvatarHtml + name + short date, with the
+// accent-spine color keyed off who posted: terracotta for the designer, amber for the client
+// (matching the amber "pending"/client-facing accent used elsewhere in the app).
+function commentListHtml(id){
+  const rows = (state.comments && state.comments[id]) || [];
+  const sorted = rows.slice().reverse();
+  const todayStr = todayISO();
+  const commentCardHtml = c => `
+    <div class="card p-4" style="border-left:3px solid ${c.author==='client' ? 'var(--amber)' : 'var(--terracotta)'};">
+      <div class="flex items-center justify-between gap-3 mb-1.5">
+        <span class="inline-flex items-center gap-2">
+          ${personAvatarHtml(c.authorName)}
+          <span class="text-sm font-semibold">${c.authorName}</span>
+        </span>
+        <span class="text-xs" style="color:var(--ink-soft)">${fmtShortDate(c.date)}${c.date===todayStr ? ' · Today' : ''}</span>
+      </div>
+      <p class="text-sm whitespace-pre-wrap leading-relaxed">${c.text}</p>
+    </div>
+  `;
+  const todayComments = sorted.filter(c=>c.date===todayStr);
+  const earlierComments = sorted.filter(c=>c.date!==todayStr);
+  let html = '';
+  if(todayComments.length){
+    html += `<div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Today</div>`;
+    html += `<div class="space-y-3 mb-5">${todayComments.map(commentCardHtml).join('')}</div>`;
+  }
+  if(earlierComments.length){
+    if(todayComments.length) html += `<div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Earlier</div>`;
+    html += `<div class="space-y-3">${earlierComments.map(commentCardHtml).join('')}</div>`;
+  }
+  return html;
+}
+// internal "Client Comments" tab
+function renderComments(id){
+  const rows = (state.comments && state.comments[id]) || [];
+  const listEl = document.getElementById('comment-list');
+  const emptyEl = document.getElementById('comment-empty');
+  if(!listEl || !emptyEl) return;
+  emptyEl.classList.toggle('hidden', rows.length>0);
+  listEl.innerHTML = commentListHtml(id);
+}
+function postComment(id){
+  const el = document.getElementById('comment-text');
+  if(!el) return;
+  const text = el.value.trim();
+  if(!text) return;
+  if(!state.comments) state.comments = {};
+  if(!state.comments[id]) state.comments[id] = [];
+  state.comments[id].push({id:uid('c'), author:'designer', authorName:'You', text, date:todayISO()});
+  save(state);
+  logActivity(id, 'Posted a comment');
+  el.value = '';
+  renderComments(id);
+  renderActivity(id);
+}
+// client portal side — first post ever from the portal prompts for (and remembers) the
+// client's display name in localStorage, so subsequent comments are attributed without asking again
+function postPortalComment(id){
+  const el = document.getElementById('portal-comment-text');
+  if(!el) return;
+  const text = el.value.trim();
+  if(!text) return;
+  const storedName = localStorage.getItem('ajd_client_name');
+  if(!storedName){
+    showModal(`
+      <h3 class="font-display text-xl mb-4">Your name</h3>
+      <div class="space-y-3">
+        <input id="pc-name" placeholder="Your name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <div class="flex justify-end gap-2 mt-5">
+        <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+        <button onclick="confirmPortalCommentName('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Confirm</button>
+      </div>
+    `);
+    return;
+  }
+  submitPortalComment(id, storedName);
+}
+function confirmPortalCommentName(id){
+  const nameEl = document.getElementById('pc-name');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if(!name){ toast('Name required'); return; }
+  localStorage.setItem('ajd_client_name', name);
+  closeModal();
+  submitPortalComment(id, name);
+}
+function submitPortalComment(id, authorName){
+  const el = document.getElementById('portal-comment-text');
+  if(!el) return;
+  const text = el.value.trim();
+  if(!text) return;
+  if(!state.comments) state.comments = {};
+  if(!state.comments[id]) state.comments[id] = [];
+  state.comments[id].push({id:uid('c'), author:'client', authorName: authorName || 'Client', text, date:todayISO()});
+  save(state);
+  logActivity(id, 'Posted a comment');
+  el.value = '';
+  renderPortalComments(id);
+}
+function renderPortalComments(id){
+  const rows = (state.comments && state.comments[id]) || [];
+  const listEl = document.getElementById('portal-comment-list');
+  const emptyEl = document.getElementById('portal-comment-empty');
+  if(!listEl || !emptyEl) return;
+  emptyEl.classList.toggle('hidden', rows.length>0);
+  listEl.innerHTML = commentListHtml(id);
+}
+
 /* ---------- contacts / suppliers ---------- */
 // simple keyword heuristic bucketing a contact's free-text role into a directory section
 const CONTACT_GROUP_ORDER = ['Supplier','Trade','Other'];
@@ -3094,6 +3239,8 @@ function renderPortal(id){
     </div>
   `;
   }).join('') : `<p class="text-sm" style="color:var(--ink-soft)">Nothing pending.</p>`;
+
+  renderPortalComments(id);
 }
 function clientDecide(id, approvalId, status, comment){
   const a = state.approvals[id].find(x=>x.id===approvalId);
