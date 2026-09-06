@@ -170,7 +170,7 @@
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="approvals" onclick="setTab('approvals')">Approvals</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="milestones" onclick="setTab('milestones')">Milestones</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="notes" onclick="setTab('notes')">Notes</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="comments" onclick="setTab('comments')">Client Comments</button>
+          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="comments" onclick="setTab('comments')">Client Comments<span id="comment-unread-badge" class="hidden ml-1 inline-flex items-center justify-center text-xs font-semibold text-white rounded-full" style="background:var(--amber); min-width:1.25rem; height:1.25rem; padding:0 .35rem;"></span></button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
           <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="board" onclick="setTab('board')">Board</button>
@@ -497,6 +497,7 @@ let state = load();
 if(!state.rates) state.rates = {}; // migrate state saved before hourly rates existed
 if(!state.boards) state.boards = {}; // migrate state saved before the board tab existed
 if(!state.comments) state.comments = {}; // migrate state saved before client comments existed
+if(!state.lastSeenByStaff) state.lastSeenByStaff = {}; // migrate state saved before unread-comment tracking existed; absence means "never seen"
 let boardsMigrated = false;
 state.projects.forEach(p=>{
   if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; }
@@ -665,8 +666,10 @@ function renderDashboard(){
     }).length;
     const overdueBadge = overdueCount > 0 ? `<span class="tag tag-rejected">${overdueCount} overdue</span>` : '';
     const archivedBadge = p.archived ? `<span class="tag tag-status">Archived</span>` : '';
-    const badgeRow = (pendingBadge || overdueBadge || archivedBadge)
-      ? `<div class="flex items-center gap-2 mt-2 flex-wrap">${pendingBadge}${overdueBadge}${archivedBadge}</div>`
+    const unreadCount = getUnreadCommentCount(p.id);
+    const unreadBadge = unreadCount > 0 ? `<span class="tag" style="background:#fbf0dd; color:var(--amber)">${unreadCount} new comment${unreadCount===1?'':'s'}</span>` : '';
+    const badgeRow = (pendingBadge || overdueBadge || unreadBadge || archivedBadge)
+      ? `<div class="flex items-center gap-2 mt-2 flex-wrap">${pendingBadge}${overdueBadge}${unreadBadge}${archivedBadge}</div>`
       : '';
     const footer = bar
       ? `<div class="mt-3 pt-3" style="border-top:1px solid var(--line)">${bar}</div>`
@@ -1332,6 +1335,10 @@ function setTab(tab){
   });
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.add('hidden'));
   document.getElementById('tab-'+tab).classList.remove('hidden');
+  if(tab === 'comments'){
+    markCommentsSeen(currentProjectId());
+    renderCommentBadge();
+  }
 }
 
 function renderProject(id){
@@ -1356,6 +1363,7 @@ function renderProject(id){
   renderProjectStats(id);
   renderNextActions(id);
   renderFfe(id); renderTime(id); renderClips(id); renderApprovals(id); renderNotes(id); renderComments(id); renderContacts(id); renderSiteTasks(id); renderActivity(id); renderMilestones(id); renderBoard(id);
+  renderCommentBadge();
 }
 
 // stat pills below the hero banner — budget + FF&E spent (clickable to edit budget) and,
@@ -2468,7 +2476,8 @@ function commentListHtml(id){
   }
   return html;
 }
-// internal "Client Comments" tab
+// internal "Client Comments" tab — display only; does NOT mark comments as seen (that only
+// happens when the tab is actually activated, see setTab/markCommentsSeen)
 function renderComments(id){
   const rows = (state.comments && state.comments[id]) || [];
   const listEl = document.getElementById('comment-list');
@@ -2477,6 +2486,32 @@ function renderComments(id){
   emptyEl.classList.toggle('hidden', rows.length>0);
   listEl.innerHTML = commentListHtml(id);
 }
+// count of client comments posted since staff last opened the Client Comments tab for this
+// project. Comments without a dateTime (posted before this feature existed) never count.
+function getUnreadCommentCount(id){
+  if(!id) return 0;
+  const rows = (state.comments && state.comments[id]) || [];
+  const lastSeen = (state.lastSeenByStaff && state.lastSeenByStaff[id]) || null;
+  return rows.filter(c => c.author === 'client' && c.dateTime && (!lastSeen || c.dateTime > lastSeen)).length;
+}
+// records that staff has just viewed this project's comments — called only from setTab's
+// 'comments' branch, never from renderComments/renderProject, so simply loading the project
+// page (or switching to another tab) never clears the unread badge
+function markCommentsSeen(id){
+  if(!id) return;
+  if(!state.lastSeenByStaff) state.lastSeenByStaff = {};
+  state.lastSeenByStaff[id] = new Date().toISOString();
+  save(state);
+}
+// updates the unread-comment pill on the internal "Client Comments" tab button. Safe to call
+// from any route (dashboard, portal, trades) — it's a no-op if there's no current project.
+function renderCommentBadge(){
+  const badge = document.getElementById('comment-unread-badge');
+  if(!badge) return;
+  const count = getUnreadCommentCount(currentProjectId());
+  badge.textContent = count > 0 ? String(count) : '';
+  badge.classList.toggle('hidden', count === 0);
+}
 function postComment(id){
   const el = document.getElementById('comment-text');
   if(!el) return;
@@ -2484,7 +2519,7 @@ function postComment(id){
   if(!text) return;
   if(!state.comments) state.comments = {};
   if(!state.comments[id]) state.comments[id] = [];
-  state.comments[id].push({id:uid('c'), author:'designer', authorName:'You', text, date:todayISO()});
+  state.comments[id].push({id:uid('c'), author:'designer', authorName:'You', text, date:todayISO(), dateTime:new Date().toISOString()});
   save(state);
   logActivity(id, 'Posted a comment');
   el.value = '';
@@ -2529,11 +2564,12 @@ function submitPortalComment(id, authorName){
   if(!text) return;
   if(!state.comments) state.comments = {};
   if(!state.comments[id]) state.comments[id] = [];
-  state.comments[id].push({id:uid('c'), author:'client', authorName: authorName || 'Client', text, date:todayISO()});
+  state.comments[id].push({id:uid('c'), author:'client', authorName: authorName || 'Client', text, date:todayISO(), dateTime:new Date().toISOString()});
   save(state);
   logActivity(id, 'Posted a comment');
   el.value = '';
   renderPortalComments(id);
+  renderCommentBadge();
 }
 function renderPortalComments(id){
   const rows = (state.comments && state.comments[id]) || [];
