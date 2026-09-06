@@ -2135,8 +2135,10 @@ function approvalHistoryHtml(a){
 }
 // single approval card — shared markup, unchanged from the pre-Kanban flat-list version
 function approvalCardHtml(id, a){
+  const clip = a.clipId ? (state.clips[id]||[]).find(c=>c.id===a.clipId) : null;
   return `
     <div class="card p-4">
+      ${clip ? `<img src="${clip.image}" alt="${clip.title}" class="w-full h-40 object-cover rounded-lg mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"><div class="hidden w-full h-40 items-center justify-center text-xs rounded-lg mb-3" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>` : ''}
       <div class="flex items-start justify-between">
         <div>
           <h4 class="font-medium">${a.title}</h4>
@@ -2185,11 +2187,16 @@ function renderApprovals(id){
 }
 function openNewApproval(){
   const id = currentProjectId();
+  const clips = state.clips[id] || [];
+  const clipOptions = clips.map(c=>`<option value="${c.id}">${c.title}</option>`).join('');
   showModal(`
     <h3 class="font-display text-xl mb-4">Request approval</h3>
     <div class="space-y-3">
       <input id="na-title" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <textarea id="na-desc" placeholder="Description" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="3"></textarea>
+      <select id="na-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">No visual reference</option>${clipOptions}
+      </select>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -2200,7 +2207,7 @@ function openNewApproval(){
 function createApproval(id){
   const title = document.getElementById('na-title').value.trim();
   if(!title){ toast('Title required'); return; }
-  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, history:[], requestedDate:new Date().toISOString().slice(0,10)});
+  state.approvals[id].push({id:uid('a'), title, description:document.getElementById('na-desc').value.trim(), status:'pending', approvedBy:null, date:null, history:[], requestedDate:new Date().toISOString().slice(0,10), clipId: document.getElementById('na-clip').value || null});
   save(state); logActivity(id, `Requested approval: ${title}`); closeModal(); toast('Approval requested'); renderApprovals(id); renderActivity(id);
 }
 // internal status change cannot fabricate client sign-off — only the client portal can set approvedBy:'client'
@@ -2868,8 +2875,11 @@ function renderPortal(id){
   `).join('') : `<p class="text-sm col-span-full" style="color:var(--ink-soft)">Nothing shared yet.</p>`;
 
   const approvals = state.approvals[id] || [];
-  document.getElementById('portal-approvals').innerHTML = approvals.length ? approvals.map(a=>`
+  document.getElementById('portal-approvals').innerHTML = approvals.length ? approvals.map(a=>{
+    const clip = a.clipId ? (state.clips[id]||[]).find(c=>c.id===a.clipId) : null;
+    return `
     <div class="card p-4">
+      ${clip ? `<img src="${clip.image}" alt="${clip.title}" class="w-full h-40 object-cover rounded-lg mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"><div class="hidden w-full h-40 items-center justify-center text-xs rounded-lg mb-3" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>` : ''}
       <div class="flex items-start justify-between">
         <div>
           <h4 class="font-medium">${a.title}</h4>
@@ -2888,7 +2898,8 @@ function renderPortal(id){
         ${a.status!=='rejected' ? `<button onclick="clientDecide('${id}','${a.id}','rejected')" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Request changes</button>` : ''}
       </div>
     </div>
-  `).join('') : `<p class="text-sm" style="color:var(--ink-soft)">Nothing pending.</p>`;
+  `;
+  }).join('') : `<p class="text-sm" style="color:var(--ink-soft)">Nothing pending.</p>`;
 }
 function clientDecide(id, approvalId, status){
   const a = state.approvals[id].find(x=>x.id===approvalId);
