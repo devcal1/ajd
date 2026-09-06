@@ -41,6 +41,8 @@
   [data-route]{display:none;}
   .toast{position:fixed; bottom:1.25rem; right:1.25rem; z-index:50; background:var(--ink); color:#fff; padding:.65rem 1rem; border-radius:10px; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.18); opacity:0; transform:translateY(8px); transition:.2s;}
   .toast.show{opacity:1; transform:translateY(0);}
+  .board-card.dragging{opacity:.4;}
+  .board-col-dropzone.drag-over{background:var(--paper-2); outline:2px dashed var(--line);}
 </style>
 </head>
 <body class="min-h-screen">
@@ -3352,7 +3354,7 @@ function renderBoard(id){
           <button onclick="deleteBoardColumn('${id}','${col.id}')" title="Delete column" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
         </span>
       </div>
-      <div class="space-y-2 mb-2">${colCards.map(c=>boardCardHtml(id, c, columns)).join('')}</div>
+      <div class="space-y-2 mb-2 board-col-dropzone" ondragover="handleColumnDragOver(event)" ondragleave="this.classList.remove('drag-over')" ondrop="handleColumnDrop(event,'${id}','${col.id}')">${colCards.map(c=>boardCardHtml(id, c, columns)).join('')}</div>
       <button onclick="openNewBoardCard('${col.id}')" class="btn-ghost w-full px-3 py-1.5 rounded-lg text-xs font-semibold">+ Add card</button>
     </div>
   `;
@@ -3386,7 +3388,7 @@ function boardCardHtml(id, card, columns){
     metaHtml = `<div class="flex items-center gap-1.5 mt-1.5">${assigneeHtml}${dueHtml}</div>`;
   }
   return `
-    <div class="rounded-lg p-2 text-sm" style="background:var(--paper-2); border:1px solid var(--line);">
+    <div class="board-card rounded-lg p-2 text-sm" draggable="true" data-card-id="${card.id}" ondragstart="handleCardDragStart(event,'${id}','${card.id}')" ondragend="handleCardDragEnd(event)" style="background:var(--paper-2); border:1px solid var(--line);">
       <div class="flex items-start justify-between gap-2">
         <span class="flex-1">${card.title}</span>
         <button onclick="deleteBoardCard('${id}','${card.id}')" title="Remove card" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
@@ -3493,6 +3495,65 @@ function moveBoardCard(id, cardId, newColId){
   save(state);
   logActivity(id, `Moved card "${card.title}" from ${fromCol?fromCol.name:'?'} to ${toCol?toCol.name:'?'}`);
   renderBoard(id); renderActivity(id); renderNextActions(id); renderProjectStats(id);
+}
+// drag-and-drop reordering/moving of board cards. The <select> dropdown above
+// remains the accessible / no-DnD fallback and still calls moveBoardCard directly.
+function handleCardDragStart(e, projId, cardId){
+  e.dataTransfer.setData('text/plain', JSON.stringify({projId, cardId}));
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('dragging');
+}
+function handleCardDragEnd(e){
+  e.currentTarget.classList.remove('dragging');
+}
+function handleColumnDragOver(e){
+  e.preventDefault(); // required to allow a drop
+  e.currentTarget.classList.add('drag-over');
+}
+function handleColumnDrop(e, projId, colId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  let data;
+  try{ data = JSON.parse(e.dataTransfer.getData('text/plain')); }catch(err){ return; }
+  if(!data || data.projId !== projId) return;
+  const cardId = data.cardId;
+  const board = state.boards && state.boards[projId];
+  if(!board) return;
+  const cards = board.cards;
+  const oldIndex = cards.findIndex(c=>c.id===cardId);
+  if(oldIndex === -1) return;
+  const card = cards[oldIndex];
+  const fromCol = board.columns.find(c=>c.id===card.columnId);
+  const toCol = board.columns.find(c=>c.id===colId);
+  // Figure out which existing card (if any) the drop point is above, using the
+  // current DOM order of .board-card children in the drop target column.
+  const siblingEls = Array.from(e.currentTarget.querySelectorAll(':scope > .board-card'))
+    .filter(el=>el.dataset.cardId !== cardId);
+  let insertBeforeCardId = null;
+  for(const el of siblingEls){
+    const rect = el.getBoundingClientRect();
+    const mid = rect.top + rect.height/2;
+    if(e.clientY < mid){ insertBeforeCardId = el.dataset.cardId; break; }
+  }
+  // Remove first, then resolve the target index against the already-shifted
+  // array by card id (not raw position) so the earlier splice-out can't skew it.
+  cards.splice(oldIndex, 1);
+  let targetIndex;
+  if(insertBeforeCardId){
+    targetIndex = cards.findIndex(c=>c.id===insertBeforeCardId);
+    if(targetIndex === -1) targetIndex = cards.length;
+  } else {
+    // No sibling below the drop point (empty column, or dropped below all cards):
+    // insert right after the last existing card in this column, or at the end.
+    let lastIdx = -1;
+    for(let i=0;i<cards.length;i++){ if(cards[i].columnId===colId) lastIdx = i; }
+    targetIndex = lastIdx === -1 ? cards.length : lastIdx + 1;
+  }
+  cards.splice(targetIndex, 0, card);
+  card.columnId = colId;
+  save(state);
+  logActivity(projId, `Moved card "${card.title}" from ${fromCol?fromCol.name:'?'} to ${toCol?toCol.name:'?'}`);
+  renderBoard(projId); renderActivity(projId); renderNextActions(projId); renderProjectStats(projId);
 }
 function deleteBoardCard(projId, cardId){
   const board = state.boards && state.boards[projId];
