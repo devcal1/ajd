@@ -59,6 +59,7 @@
         <a href="#/calendar" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Deadlines</a>
         <a href="#/procurement" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Procurement</a>
         <a href="#/approvals" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
+        <a href="#/budget" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Budget</a>
       </nav>
     </div>
   </header>
@@ -153,6 +154,19 @@
       </div>
       <div id="approvals-list" class="space-y-6"></div>
       <div id="approvals-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Budget (cross-project) -->
+    <section data-route="budget">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Budget</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Committed spend across all active projects</p>
+        </div>
+      </div>
+      <div id="budget-summary-strip" class="flex flex-wrap gap-2 mb-6 hidden"></div>
+      <div id="budget-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="budget-empty" class="hidden text-center py-16"></div>
     </section>
 
     <!-- Project detail -->
@@ -629,6 +643,9 @@ function route(){
   } else if(h.startsWith('#/approvals')){
     document.querySelector('#shell [data-route="approvals"]').style.display='block';
     renderApprovalsOverview();
+  } else if(h.startsWith('#/budget')){
+    document.querySelector('#shell [data-route="budget"]').style.display='block';
+    renderBudget();
   } else {
     document.querySelector('#shell [data-route="dashboard"]').style.display='block';
     renderDashboard();
@@ -1277,6 +1294,96 @@ function renderApprovalsOverview(){
   ].join('');
 }
 
+/* ---------- budget (cross-project, read-only/derived) ---------- */
+// Committed spend per active project: FF&E spend (ffeSpent) plus labor cost (getProjectLaborCost),
+// against the project's stated budget. Projects with no budget set (budget===0) always sort to
+// the end — there's no meaningful "% used" to rank them by — everything else sorts by pctUsed
+// descending, most over-budget first. Mirrors getTeamWorkload/getProcurementEntries' pattern:
+// no new persisted state, computed fresh on every render.
+function getBudgetEntries(){
+  const entries = state.projects.filter(p=>!p.archived).map(p=>{
+    const budget = Number(p.budget) || 0;
+    const ffeSpend = ffeSpent(p.id);
+    const laborCost = getProjectLaborCost(p.id);
+    const committed = ffeSpend + laborCost;
+    const pctUsed = budget > 0 ? (committed / budget) * 100 : 0;
+    const over = budget > 0 && committed > budget;
+    return {id:p.id, name:p.name, budget, ffeSpend, laborCost, committed, pctUsed, over};
+  });
+  entries.sort((a,b)=>{
+    if(a.budget === 0 && b.budget === 0) return 0;
+    if(a.budget === 0) return 1;
+    if(b.budget === 0) return -1;
+    return b.pctUsed - a.pctUsed;
+  });
+  return entries;
+}
+// single project budget card — mirrors the dashboard card's exact budget-bar styling (red fill
+// if over, terracotta otherwise, width capped at 100%), or a muted "No budget set" line when the
+// project has no budget at all instead of a meaningless 0%-of-0 bar.
+function budgetCardHtml(e){
+  const overTag = e.over ? `<span class="tag tag-rejected">Over budget</span>` : '';
+  const barHtml = e.budget > 0
+    ? `<div class="mt-1 text-xs font-medium" style="color:${e.over ? 'var(--red)' : 'var(--ink-soft)'}">${money(e.committed)} of ${money(e.budget)}</div>
+       <div class="mt-1 w-full h-1 rounded-full overflow-hidden" style="background:var(--paper-2)">
+         <div class="h-full rounded-full" style="width:${Math.min(100, e.pctUsed)}%; background:${e.over ? 'var(--red)' : 'var(--terracotta)'}"></div>
+       </div>`
+    : `<div class="mt-1 text-xs" style="color:var(--ink-soft)">No budget set</div>`;
+  return `
+    <div class="card p-4">
+      <div class="flex items-center justify-between mb-3 gap-2">
+        <a href="#/project/${e.id}" class="font-display text-lg truncate hover:text-[var(--terracotta-dark)]">${e.name}</a>
+        ${overTag}
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-sm mb-3">
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">FF&amp;E spend</div>
+          <div class="font-semibold">${money(e.ffeSpend)}</div>
+        </div>
+        <div>
+          <div class="text-xs" style="color:var(--ink-soft)">Labor cost</div>
+          <div class="font-semibold">${money(e.laborCost)}</div>
+        </div>
+      </div>
+      <div class="pt-2" style="border-top:1px solid var(--line)">
+        <div class="text-xs" style="color:var(--ink-soft)">Committed total</div>
+        <div class="font-semibold text-sm">${money(e.committed)}</div>
+        ${barHtml}
+      </div>
+    </div>
+  `;
+}
+function renderBudget(){
+  const stripEl = document.getElementById('budget-summary-strip');
+  const gridEl = document.getElementById('budget-grid');
+  const emptyEl = document.getElementById('budget-empty');
+  if(!gridEl || !emptyEl) return;
+  const entries = getBudgetEntries();
+  emptyEl.classList.toggle('hidden', entries.length>0);
+  if(stripEl) stripEl.classList.toggle('hidden', entries.length===0);
+  if(!entries.length){
+    gridEl.innerHTML = '';
+    if(stripEl) stripEl.innerHTML = '';
+    emptyEl.className = 'text-center py-16';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No budget data yet</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">Active projects with a budget, FF&amp;E spend or logged time will show up here.</p>
+    `;
+    return;
+  }
+  const totalBudget = entries.filter(e=>e.budget>0).reduce((a,e)=>a+e.budget, 0);
+  const totalCommitted = entries.reduce((a,e)=>a+e.committed, 0);
+  const overCount = entries.filter(e=>e.over).length;
+  if(stripEl){
+    stripEl.innerHTML = `
+      <span class="tag tag-status">Total budget ${money(totalBudget)}</span>
+      <span class="tag tag-status">Total committed ${money(totalCommitted)}</span>
+      <span class="tag ${overCount>0 ? 'tag-rejected' : 'tag-status'}">${overCount} project${overCount===1?'':'s'} over budget</span>
+    `;
+  }
+  gridEl.innerHTML = entries.map(budgetCardHtml).join('');
+}
+
 // Confirmation modal before generating a PO for one supplier group: lists every item with its
 // project/qty/cost/line total, a grand total, and the resolved supplier contact (if any) so the
 // user can sanity-check before it fires (flips every row to "Ordered" + prints a document).
@@ -1698,7 +1805,7 @@ function generateInvoice(id){
       <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(lineTotal))}</td>
     </tr>`;
   }).join('');
-  const laborTotal = laborNames.reduce((a,name)=>a + laborTotals[name] * (Number(state.rates[name])||0), 0);
+  const laborTotal = getProjectLaborCost(id);
 
   const grandTotal = subtotal + markupAmount + laborTotal;
   const html = `<!DOCTYPE html>
@@ -1939,6 +2046,19 @@ function renderNextActions(id){
 function ffeSpent(id){
   const rows = state.ffe[id] || [];
   return rows.reduce((a,r)=>a + (Number(r.cost)||0) * (Number(r.qty)||0), 0);
+}
+// Total labor cost for one project: hours logged per person x their practice-wide hourly rate
+// (state.rates, keyed by person name, default 0 if unset). Shared by generateInvoice's labor
+// section and getBudgetEntries' committed-spend calculation so the two never drift apart.
+function getProjectLaborCost(id){
+  if(!state.rates) state.rates = {};
+  const timeRows = state.time[id] || [];
+  const laborTotals = {};
+  timeRows.forEach(r=>{
+    const person = r.person || 'Unknown';
+    laborTotals[person] = (laborTotals[person] || 0) + (Number(r.hours) || 0);
+  });
+  return Object.keys(laborTotals).reduce((a,name)=>a + laborTotals[name] * (Number(state.rates[name])||0), 0);
 }
 // FF&E status vocabulary: Specified (neutral) -> Ordered (amber) -> Delivered / Installed (green)
 function ffeStatusTagClass(status){
