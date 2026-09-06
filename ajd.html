@@ -1929,11 +1929,50 @@ function updateFfeStatus(projId, itemId, status){
 // small status tag for the FF&E row of an item that has a linked approval — looks up the
 // first approval (in creation order) whose ffeItemId matches this item's id, and returns ''
 // when there is none so items with no linked approval render no badge at all.
+// treats undefined, null and '' as the same "unset" value for spec-drift comparison purposes —
+// seed/legacy FF&E rows leave sku/dimensions/finish undefined, while the edit modal (saveFfe)
+// always writes explicit null for an empty optional field. Without this, opening and saving the
+// edit modal with no meaningful change flips undefined -> null and strict !== falsely reports drift.
+function normSpecVal(v){
+  return (v === undefined || v === null || v === '') ? null : v;
+}
+// shallow copy of the spec fields on an FF&E row that matter for approval sign-off, taken at the
+// moment an approval is approved so later edits to the live row can be detected as drift. Values
+// are normalized (see normSpecVal) so a freshly-taken snapshot never itself introduces false drift.
+// Returns null when the item can't be found (e.g. it was since deleted).
+function snapshotFfeSpec(id, ffeItemId){
+  const row = (state.ffe[id]||[]).find(r=>r.id === ffeItemId);
+  if(!row) return null;
+  const {sku, dimensions, finish, cost, qty, supplier} = row;
+  return {
+    sku: normSpecVal(sku), dimensions: normSpecVal(dimensions), finish: normSpecVal(finish),
+    cost: normSpecVal(cost), qty: normSpecVal(qty), supplier: normSpecVal(supplier)
+  };
+}
+// compares an approved approval's frozen approvedSnapshot against the live FF&E row it points at,
+// returning the list of spec field names that have changed since approval. Both sides are run
+// through normSpecVal before comparing (not just at snapshot time) so this stays correct even for
+// approvals whose snapshot predates that normalization. Returns [] whenever there's nothing to
+// compare (not approved, no snapshot, no linked item, or item since deleted).
+function ffeApprovalDrift(id, approval){
+  if(!approval || approval.status !== 'approved') return [];
+  if(!approval.approvedSnapshot || !approval.ffeItemId) return [];
+  const row = (state.ffe[id]||[]).find(r=>r.id === approval.ffeItemId);
+  if(!row) return [];
+  const fields = ['sku', 'dimensions', 'finish', 'cost', 'qty', 'supplier'];
+  return fields.filter(f => normSpecVal(row[f]) !== normSpecVal(approval.approvedSnapshot[f]));
+}
 function ffeApprovalBadgeHtml(id, itemId){
   const approval = (state.approvals[id]||[]).find(a=>a.ffeItemId === itemId);
   if(!approval) return '';
   const style = 'font-size:.65rem; padding:.1rem .4rem;';
-  if(approval.status === 'approved') return `<span class="tag tag-approved" style="${style}" title="Client approved">&#10003; Approved</span>`;
+  if(approval.status === 'approved'){
+    const drift = ffeApprovalDrift(id, approval);
+    if(drift.length){
+      return `<span class="tag tag-pending" style="${style}" title="Changed since approval: ${drift.join(', ')}">&#9888; Spec changed since approval</span>`;
+    }
+    return `<span class="tag tag-approved" style="${style}" title="Client approved">&#10003; Approved</span>`;
+  }
   if(approval.status === 'rejected') return `<span class="tag tag-rejected" style="${style}" title="Client requested changes">Changes requested</span>`;
   return `<span class="tag tag-pending" style="${style}" title="Approval pending">Pending</span>`;
 }
@@ -2633,6 +2672,8 @@ function approvalHistoryHtml(a){
 // single approval card — shared markup, unchanged from the pre-Kanban flat-list version
 function approvalCardHtml(id, a){
   const clip = a.clipId ? (state.clips[id]||[]).find(c=>c.id===a.clipId) : null;
+  const drift = a.status === 'approved' ? ffeApprovalDrift(id, a) : [];
+  const driftHtml = drift.length ? `<p class="text-xs mt-2 font-semibold" style="color:var(--amber)">&#9888; Spec changed since approval (${drift.join(', ')})</p>` : '';
   return `
     <div class="card p-4">
       ${clip ? `<img src="${clip.image}" alt="${clip.title}" class="w-full h-40 object-cover rounded-lg mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"><div class="hidden w-full h-40 items-center justify-center text-xs rounded-lg mb-3" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>` : ''}
@@ -2642,6 +2683,7 @@ function approvalCardHtml(id, a){
           <p class="text-sm mt-1" style="color:var(--ink-soft)">${a.description}</p>
           ${requestedAgoHtml(a)}
           ${a.date ? `<p class="text-xs mt-2" style="color:var(--ink-soft)">${a.status==='approved'?'Approved':'Rejected'} by ${a.approvedBy} on ${a.date}</p>` : ''}
+          ${driftHtml}
         </div>
         <div class="flex items-center gap-2">
           <span class="tag tag-${a.status}">${a.status}</span>
@@ -2720,6 +2762,7 @@ function designerDecide(id, approvalId, status, comment){
   if(!a) return;
   if(!a.history) a.history = [];
   a.status = status; a.approvedBy = 'designer'; a.date = new Date().toISOString().slice(0,10);
+  if(status === 'approved' && a.ffeItemId) a.approvedSnapshot = snapshotFfeSpec(id, a.ffeItemId);
   a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
   save(state); logActivity(id, `${a.title} status: ${status} by designer`); renderApprovals(id); renderActivity(id); renderFfe(id);
 }
@@ -3690,6 +3733,8 @@ function renderPortal(id){
   const approvals = state.approvals[id] || [];
   document.getElementById('portal-approvals').innerHTML = approvals.length ? approvals.map(a=>{
     const clip = a.clipId ? (state.clips[id]||[]).find(c=>c.id===a.clipId) : null;
+    const drift = a.status === 'approved' ? ffeApprovalDrift(id, a) : [];
+    const driftHtml = drift.length ? `<p class="text-xs mt-2 font-semibold" style="color:var(--amber)">&#9888; Spec changed since approval (${drift.join(', ')})</p>` : '';
     return `
     <div class="card p-4">
       ${clip ? `<img src="${clip.image}" alt="${clip.title}" class="w-full h-40 object-cover rounded-lg mb-3" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"><div class="hidden w-full h-40 items-center justify-center text-xs rounded-lg mb-3" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>` : ''}
@@ -3699,6 +3744,7 @@ function renderPortal(id){
           <p class="text-sm mt-1" style="color:var(--ink-soft)">${a.description}</p>
           ${requestedAgoHtml(a)}
           ${a.date ? `<p class="text-xs mt-2" style="color:var(--ink-soft)">${a.status==='approved'?'Approved':'Rejected'} by ${a.approvedBy} on ${a.date}</p>` : ''}
+          ${driftHtml}
         </div>
         <div class="flex items-center gap-2">
           <span class="tag tag-${a.status}">${a.status}</span>
@@ -3721,6 +3767,7 @@ function clientDecide(id, approvalId, status, comment){
   if(!a) return;
   if(!a.history) a.history = [];
   a.status = status; a.approvedBy = 'client'; a.date = new Date().toISOString().slice(0,10);
+  if(status === 'approved' && a.ffeItemId) a.approvedSnapshot = snapshotFfeSpec(id, a.ffeItemId);
   a.history.push({status:a.status, approvedBy:a.approvedBy, date:a.date, comment: comment || null});
   save(state); logActivity(id, `${a.title} status: ${status} by client`); renderPortal(id); renderActivity(id); renderFfe(id);
 }
