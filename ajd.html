@@ -354,6 +354,8 @@
           <tr class="text-left" style="color:var(--ink-soft)">
             <th class="px-4 py-2 font-medium">Item</th>
             <th class="px-4 py-2 font-medium">Category</th>
+            <th class="px-4 py-2 font-medium">Details</th>
+            <th class="px-4 py-2 font-medium">Spec sheet</th>
             <th class="px-4 py-2 font-medium">Status</th>
           </tr>
         </thead>
@@ -1522,10 +1524,14 @@ function categoryChipHtml(category){
 // client-facing read-only row for the portal's "Product schedule" section: item name, category
 // chip, and a plain (non-editable) status tag — no cost/qty/supplier, ever, on the portal
 function portalFfeRowHtml(r){
+  const details = [r.dimensions, r.finish].filter(Boolean).join(' · ');
+  const specLink = r.specUrl ? `<a href="${r.specUrl}" target="_blank" rel="noopener" style="color:var(--terracotta-dark); text-decoration:underline;">View product</a>` : '';
   return `
     <tr class="border-t" style="border-color:var(--line)">
       <td class="px-4 py-2">${r.item}</td>
       <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
+      <td class="px-4 py-2 text-xs" style="color:var(--ink-soft)">${details}</td>
+      <td class="px-4 py-2 text-xs">${specLink}</td>
       <td class="px-4 py-2"><span class="tag ${ffeStatusTagClass(r.status)}">${r.status}</span></td>
     </tr>
   `;
@@ -1609,9 +1615,19 @@ function ffeRowHtml(id, r, idx, clips){
       ? `<div class="text-xs font-semibold mt-1" style="color:var(--red)">Overdue — due ${fmtShortDate(r.expectedDate)}</div>`
       : `<div class="text-xs mt-1" style="color:var(--ink-soft)">Due ${fmtShortDate(r.expectedDate)}</div>`;
   }
+  const hasSpec = !!(r.sku || r.dimensions || r.finish || r.specUrl);
+  const caret = hasSpec
+    ? `<button onclick="toggleFfeSpec('${r.id}')" id="ffe-spec-caret-${r.id}" title="Show details" class="text-xs leading-none mr-1.5 align-middle hover:text-[var(--terracotta-dark)]" style="color:var(--ink-soft)">&#9656;</button>`
+    : '';
+  const specRows = [
+    r.sku ? `<div><span style="color:var(--ink-soft)">SKU:</span> ${r.sku}</div>` : '',
+    r.dimensions ? `<div><span style="color:var(--ink-soft)">Dimensions:</span> ${r.dimensions}</div>` : '',
+    r.finish ? `<div><span style="color:var(--ink-soft)">Finish:</span> ${r.finish}</div>` : '',
+    r.specUrl ? `<div><a href="${r.specUrl}" target="_blank" rel="noopener" style="color:var(--terracotta-dark); text-decoration:underline;">View product</a></div>` : ''
+  ].filter(Boolean).join('');
   return `
     <tr class="border-t" style="border-color:var(--line); ${rowBg}">
-      <td class="px-4 py-2">${thumb}${r.item}</td>
+      <td class="px-4 py-2">${caret}${thumb}${r.item}</td>
       <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
       <td class="px-4 py-2" style="color:var(--ink-soft)">${r.supplier}</td>
       <td class="px-4 py-2">${r.qty}</td>
@@ -1622,7 +1638,19 @@ function ffeRowHtml(id, r, idx, clips){
         <button onclick="deleteFfe('${id}','${r.id}')" title="Remove item" class="text-sm leading-none hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>
       </td>
     </tr>
+    <tr id="ffe-spec-${r.id}" class="hidden border-t" style="border-color:var(--line); ${rowBg}">
+      <td class="px-4 py-2 text-xs space-y-0.5" colspan="7">${specRows}</td>
+    </tr>
   `;
+}
+// pure DOM toggle for the collapsible spec-detail row under an FF&E item — no state mutation,
+// no re-render, just show/hide the row and flip the caret glyph
+function toggleFfeSpec(id){
+  const row = document.getElementById(`ffe-spec-${id}`);
+  const caret = document.getElementById(`ffe-spec-caret-${id}`);
+  if(!row) return;
+  const nowHidden = row.classList.toggle('hidden');
+  if(caret) caret.innerHTML = nowHidden ? '&#9656;' : '&#9662;';
 }
 // small full-width heading row spanning all 7 columns, used above each room group
 function ffeGroupHeadingHtml(label){
@@ -1746,10 +1774,10 @@ function csvEscape(val){
 function exportFfeCsv(id){
   const rows = state.ffe[id] || [];
   const p = state.projects.find(x=>x.id===id);
-  const header = ['Item','Category','Supplier','Qty','Cost','Status'];
+  const header = ['Item','Category','Supplier','Qty','Cost','Status','SKU','Dimensions','Finish','Product URL'];
   const lines = [header.join(',')];
   rows.forEach(r=>{
-    lines.push([r.item, r.category, r.supplier, r.qty, r.cost, r.status].map(csvEscape).join(','));
+    lines.push([r.item, r.category, r.supplier, r.qty, r.cost, r.status, r.sku, r.dimensions, r.finish, r.specUrl].map(csvEscape).join(','));
   });
   const csv = lines.join('\n');
   const nameSlug = (p ? p.name : 'project').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'project';
@@ -1854,6 +1882,10 @@ function openNewFfe(){
       <input id="nf-item" placeholder="Item name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <input id="nf-room" placeholder="Room (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <input id="nf-category" placeholder="Category (e.g. Furniture)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-sku" placeholder="SKU / model number (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-dimensions" placeholder="Dimensions, e.g. 600 x 450 x 800mm (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-finish" placeholder="Finish / material / colour (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-specurl" placeholder="Product / spec-sheet URL (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       ${ffeSupplierFieldHtml(id, '')}
       <div class="flex gap-3">
         <input id="nf-qty" type="number" min="1" value="1" placeholder="Qty" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
@@ -1886,6 +1918,10 @@ function createFfe(id){
     item,
     room: document.getElementById('nf-room').value.trim() || null,
     category: document.getElementById('nf-category').value.trim() || 'Uncategorised',
+    sku: document.getElementById('nf-sku').value.trim() || null,
+    dimensions: document.getElementById('nf-dimensions').value.trim() || null,
+    finish: document.getElementById('nf-finish').value.trim() || null,
+    specUrl: document.getElementById('nf-specurl').value.trim() || null,
     supplier: document.getElementById('nf-supplier').value.trim() || '—',
     qty: Number(document.getElementById('nf-qty').value) || 1,
     cost: Number(document.getElementById('nf-cost').value) || 0,
@@ -1912,6 +1948,10 @@ function editFfe(projId, itemId){
       <input id="nf-item" value="${r.item||''}" placeholder="Item name" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <input id="nf-room" value="${r.room||''}" placeholder="Room (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       <input id="nf-category" value="${r.category||''}" placeholder="Category (e.g. Furniture)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-sku" value="${r.sku||''}" placeholder="SKU / model number (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-dimensions" value="${r.dimensions||''}" placeholder="Dimensions, e.g. 600 x 450 x 800mm (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-finish" value="${r.finish||''}" placeholder="Finish / material / colour (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <input id="nf-specurl" value="${r.specUrl||''}" placeholder="Product / spec-sheet URL (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
       ${ffeSupplierFieldHtml(projId, r.supplier)}
       <div class="flex gap-3">
         <input id="nf-qty" type="number" min="1" value="${Number(r.qty)||1}" placeholder="Qty" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
@@ -1945,6 +1985,10 @@ function saveFfe(projId, itemId){
   r.item = item;
   r.room = document.getElementById('nf-room').value.trim() || null;
   r.category = document.getElementById('nf-category').value.trim() || 'Uncategorised';
+  r.sku = document.getElementById('nf-sku').value.trim() || null;
+  r.dimensions = document.getElementById('nf-dimensions').value.trim() || null;
+  r.finish = document.getElementById('nf-finish').value.trim() || null;
+  r.specUrl = document.getElementById('nf-specurl').value.trim() || null;
   r.supplier = document.getElementById('nf-supplier').value.trim() || '—';
   r.qty = Number(document.getElementById('nf-qty').value) || 1;
   r.cost = Number(document.getElementById('nf-cost').value) || 0;
