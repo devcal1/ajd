@@ -1049,15 +1049,17 @@ function getProcurementEntries(){
       }
     });
   });
+  const supplierLeadTimes = computeSupplierLeadTimes(delivered);
+  onOrder.forEach(r=>{ r.predictedLate = getPredictedLateInfo(r, supplierLeadTimes); });
   onOrder.sort((a,b)=> (b.overdue - a.overdue) || (b.daysOnOrder - a.daysOnOrder));
   delivered.sort((a,b)=> new Date(b.deliveredDate) - new Date(a.deliveredDate));
   return {onOrder, delivered};
 }
-// average delivered lead time per supplier, drawn from the same delivered set
-// getProcurementEntries computes — a quick "who's fast, who's slow" glance for the top of the
-// Procurement page. Blank/placeholder ('—') suppliers are skipped since they aren't a real vendor.
-function getSupplierLeadTimes(){
-  const {delivered} = getProcurementEntries();
+// average delivered lead time per supplier, given an already-built `delivered` array (the shape
+// getProcurementEntries produces). Pure/no re-entry into getProcurementEntries, so it can be
+// called both from within getProcurementEntries itself and from getSupplierLeadTimes below.
+// Blank/placeholder ('—') suppliers are skipped since they aren't a real vendor.
+function computeSupplierLeadTimes(delivered){
   const bySupplier = {};
   delivered.forEach(r=>{
     const supplier = (r.supplier||'').trim();
@@ -1069,6 +1071,25 @@ function getSupplierLeadTimes(){
   return Object.keys(bySupplier)
     .map(supplier=>({supplier, avgDays: Math.round(bySupplier[supplier].total / bySupplier[supplier].count), count: bySupplier[supplier].count}))
     .sort((a,b)=> b.count - a.count);
+}
+// average delivered lead time per supplier, drawn from the same delivered set
+// getProcurementEntries computes — a quick "who's fast, who's slow" glance for the top of the
+// Procurement page.
+function getSupplierLeadTimes(){
+  const {delivered} = getProcurementEntries();
+  return computeSupplierLeadTimes(delivered);
+}
+// Compares an on-order row's time-on-order against its supplier's historical average delivered
+// lead time. Hard "Overdue" (past an explicit expectedDate) always takes precedence and these two
+// tags are mutually exclusive — never show both on the same row.
+function getPredictedLateInfo(row, supplierLeadTimes){
+  if(row.overdue) return null;
+  const supplier = (row.supplier||'').trim();
+  if(!supplier || supplier === '—') return null;
+  const match = supplierLeadTimes.find(s=>s.supplier === supplier);
+  if(!match || !match.avgDays) return null;
+  if(row.daysOnOrder > match.avgDays) return {avgDays: match.avgDays};
+  return null;
 }
 // single procurement row, shared by the "On order" and "Recently delivered" lists — `kind`
 // picks which date/metric column applies. Status text reuses ffeStatusSelectColors so the
@@ -1089,7 +1110,7 @@ function procurementRowHtml(r, kind){
       <span class="text-xs w-36 flex-shrink-0" style="color:var(--ink-soft)">${dateLabel} ${dateValue}</span>
       <span class="text-xs w-32 flex-shrink-0 font-semibold" style="color:${kind==='onOrder' && r.overdue ? 'var(--red)' : 'var(--ink-soft)'}">${metric}</span>
       <span class="tag" style="background:${c.background}; color:${c.color}">${r.status}</span>
-      ${kind === 'onOrder' && r.overdue ? `<span class="tag tag-rejected">Overdue</span>` : ''}
+      ${kind === 'onOrder' && r.overdue ? `<span class="tag tag-rejected">Overdue</span>` : (kind === 'onOrder' && r.predictedLate ? `<span class="tag" style="background:transparent; border:1px solid var(--amber); color:var(--amber)">Predicted late (avg ${r.predictedLate.avgDays}d)</span>` : '')}
     </div>
   `;
 }
