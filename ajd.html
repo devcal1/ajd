@@ -53,12 +53,12 @@
   <header class="border-b" style="border-color:var(--line); background:#fff;">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
       <a href="#/" class="font-display text-2xl tracking-tight" style="color:var(--terracotta-dark)">AJD</a>
-      <nav class="text-sm font-medium flex gap-6" style="color:var(--ink-soft)">
-        <a href="#/" class="hover:text-[var(--ink)]">Projects</a>
-        <a href="#/team" class="hover:text-[var(--ink)]">Team</a>
-        <a href="#/calendar" class="hover:text-[var(--ink)]">Deadlines</a>
-        <a href="#/procurement" class="hover:text-[var(--ink)]">Procurement</a>
-        <a href="#/approvals" class="hover:text-[var(--ink)]">Approvals</a>
+      <nav class="text-sm font-medium flex gap-6 flex-nowrap overflow-x-auto" style="color:var(--ink-soft)">
+        <a href="#/" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Projects</a>
+        <a href="#/team" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Team</a>
+        <a href="#/calendar" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Deadlines</a>
+        <a href="#/procurement" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Procurement</a>
+        <a href="#/approvals" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
       </nav>
     </div>
   </header>
@@ -221,7 +221,7 @@
             <button onclick="openNewFfe()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Add item</button>
           </div>
         </div>
-        <div class="card overflow-hidden">
+        <div class="card overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left" style="background:var(--paper-2); color:var(--ink-soft)">
@@ -247,7 +247,7 @@
           <button onclick="openNewTime()" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">+ Log time</button>
         </div>
         <div id="time-by-person" class="flex flex-wrap gap-2 mb-3"></div>
-        <div class="card overflow-hidden">
+        <div class="card overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left" style="background:var(--paper-2); color:var(--ink-soft)">
