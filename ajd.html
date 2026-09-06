@@ -118,6 +118,11 @@
       <div id="procurement-supplier-leads" class="flex flex-wrap gap-2 mb-6 hidden"></div>
       <div class="space-y-6">
         <div>
+          <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Ready to order</div>
+          <div id="procurement-ready" class="space-y-2"></div>
+          <div id="procurement-ready-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">Nothing specified with a supplier yet.</div>
+        </div>
+        <div>
           <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">On order</div>
           <div id="procurement-on-order" class="space-y-2"></div>
           <div id="procurement-on-order-empty" class="hidden text-center py-10 text-sm" style="color:var(--ink-soft)">Nothing on order right now.</div>
@@ -498,6 +503,7 @@ if(!state.rates) state.rates = {}; // migrate state saved before hourly rates ex
 if(!state.boards) state.boards = {}; // migrate state saved before the board tab existed
 if(!state.comments) state.comments = {}; // migrate state saved before client comments existed
 if(!state.lastSeenByStaff) state.lastSeenByStaff = {}; // migrate state saved before unread-comment tracking existed; absence means "never seen"
+if(!state.poCounters) state.poCounters = {}; // migrate state saved before purchase orders existed; keyed by lowercase-trimmed supplier name -> {number}
 let boardsMigrated = false;
 state.projects.forEach(p=>{
   if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; }
@@ -963,13 +969,79 @@ function procurementRowHtml(r, kind){
     </div>
   `;
 }
+// Groups every active project's "Specified" FF&E rows that have a real supplier into
+// per-supplier buckets, keyed by lowercase-trimmed supplier name so "Articolo" and "articolo "
+// land in the same group. Each row keeps its own id + projId so a later status mutation
+// (generatePO) can look the exact row back up in state.ffe[projId] rather than operating on
+// this derived copy. Mirrors getProcurementEntries' read-only/derived pattern.
+function getReadyToOrderEntries(){
+  const groups = {};
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.ffe[p.id]||[]).forEach(r=>{
+      if(r.status !== 'Specified') return;
+      const supplier = (r.supplier||'').trim();
+      if(!supplier || supplier === '—') return;
+      const key = supplier.toLowerCase();
+      if(!groups[key]) groups[key] = {displayName: supplier, rows: []};
+      groups[key].rows.push({
+        id: r.id,
+        projId: p.id,
+        projName: p.name,
+        item: r.item,
+        sku: r.sku || '',
+        qty: Number(r.qty) || 0,
+        cost: Number(r.cost) || 0
+      });
+    });
+  });
+  return groups;
+}
+// First contact (across all projects) whose name case/whitespace-insensitively matches a
+// supplier name — used to surface a phone/email on the "Ready to order" PO flow. Contacts are
+// stored per-project, so this scans every project's contact list rather than one lookup.
+// encodeURIComponent leaves ' unescaped (it's in its "unreserved" exception set), which breaks
+// when the encoded value is interpolated into a single-quoted onclick="..." attribute (e.g. a
+// supplier named "O'Brien & Co"). Escape it explicitly; decodeSupplierKey below reverses both.
+function encodeSupplierKey(key){ return encodeURIComponent(key).replace(/'/g, '%27'); }
+function decodeSupplierKey(key){ return decodeURIComponent(key); }
+function findSupplierContact(supplierName){
+  const target = (supplierName||'').trim().toLowerCase();
+  if(!target) return null;
+  for(const p of state.projects){
+    const contacts = (state.contacts && state.contacts[p.id]) || [];
+    const match = contacts.find(c=>(c.name||'').trim().toLowerCase() === target);
+    if(match) return match;
+  }
+  return null;
+}
+// single "Ready to order" supplier card — item count, total cost, and a Generate PO button
+function readyToOrderCardHtml(key, group){
+  const total = group.rows.reduce((a,r)=>a + r.cost * r.qty, 0);
+  const esc = s => String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
+  return `
+    <div class="card px-4 py-3 flex items-center gap-3 flex-wrap">
+      <span class="flex-1 text-sm min-w-[140px] font-medium">${esc(group.displayName)}</span>
+      <span class="text-xs" style="color:var(--ink-soft)">${group.rows.length} item${group.rows.length===1?'':'s'}</span>
+      <span class="text-sm font-semibold">${money(total)}</span>
+      <button onclick="openGeneratePO('${encodeSupplierKey(key)}')" class="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold">Generate PO</button>
+    </div>
+  `;
+}
 function renderProcurement(){
+  const readyList = document.getElementById('procurement-ready');
+  const readyEmpty = document.getElementById('procurement-ready-empty');
   const onOrderList = document.getElementById('procurement-on-order');
   const deliveredList = document.getElementById('procurement-delivered');
   const onOrderEmpty = document.getElementById('procurement-on-order-empty');
   const deliveredEmpty = document.getElementById('procurement-delivered-empty');
   const supplierRow = document.getElementById('procurement-supplier-leads');
   if(!onOrderList || !deliveredList) return;
+  if(readyList && readyEmpty){
+    const readyGroups = getReadyToOrderEntries();
+    const readyKeys = Object.keys(readyGroups);
+    readyEmpty.classList.toggle('hidden', readyKeys.length>0);
+    readyList.innerHTML = readyKeys.map(key=>readyToOrderCardHtml(key, readyGroups[key])).join('');
+  }
   const {onOrder, delivered} = getProcurementEntries();
   const supplierLeads = getSupplierLeadTimes();
   if(supplierRow){
@@ -982,6 +1054,150 @@ function renderProcurement(){
   onOrderList.innerHTML = onOrder.map(r=>procurementRowHtml(r,'onOrder')).join('');
   deliveredEmpty.classList.toggle('hidden', delivered.length>0);
   deliveredList.innerHTML = delivered.map(r=>procurementRowHtml(r,'delivered')).join('');
+}
+
+// Confirmation modal before generating a PO for one supplier group: lists every item with its
+// project/qty/cost/line total, a grand total, and the resolved supplier contact (if any) so the
+// user can sanity-check before it fires (flips every row to "Ordered" + prints a document).
+function openGeneratePO(supplierKey){
+  const key = decodeSupplierKey(supplierKey);
+  const groups = getReadyToOrderEntries();
+  const group = groups[key];
+  if(!group){ toast('Nothing to order for that supplier'); return; }
+  const esc = s => String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const contact = findSupplierContact(group.displayName);
+  const contactHtml = contact
+    ? `<div class="text-xs mt-1" style="color:var(--ink-soft)">${[contact.phone, contact.email].filter(Boolean).map(esc).join(' · ') || 'No phone/email on file'}</div>`
+    : `<div class="text-xs mt-1" style="color:var(--ink-soft)">No matching contact found</div>`;
+  const rowsHtml = group.rows.map(r=>`
+    <tr class="border-t" style="border-color:var(--line)">
+      <td class="px-2 py-1.5">${esc(r.item)}</td>
+      <td class="px-2 py-1.5" style="color:var(--ink-soft)">${esc(r.projName)}</td>
+      <td class="px-2 py-1.5 text-right">${r.qty}</td>
+      <td class="px-2 py-1.5 text-right">${money(r.cost)}</td>
+      <td class="px-2 py-1.5 text-right font-medium">${money(r.cost * r.qty)}</td>
+    </tr>
+  `).join('');
+  const total = group.rows.reduce((a,r)=>a + r.cost * r.qty, 0);
+  showModal(`
+    <h3 class="font-display text-xl mb-1">Generate PO — ${esc(group.displayName)}</h3>
+    ${contactHtml}
+    <div class="mt-3 max-h-64 overflow-y-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-left" style="color:var(--ink-soft)">
+            <th class="px-2 py-1 font-medium">Item</th>
+            <th class="px-2 py-1 font-medium">Project</th>
+            <th class="px-2 py-1 font-medium text-right">Qty</th>
+            <th class="px-2 py-1 font-medium text-right">Cost</th>
+            <th class="px-2 py-1 font-medium text-right">Line total</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div class="text-right text-sm font-semibold mt-3">Total: ${money(total)}</div>
+    <p class="text-xs mt-2" style="color:var(--ink-soft)">This marks all ${group.rows.length} item${group.rows.length===1?'':'s'} as Ordered.</p>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="generatePO('${supplierKey}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Generate PO</button>
+    </div>
+  `);
+}
+// Prints a PO document (same window.open/document.write/print pattern as generateInvoice), then
+// flips every item in the group to "Ordered" via setFfeStatus (so orderDate auto-stamps), logging
+// one batched activity entry per affected project rather than one per item.
+function generatePO(supplierKey){
+  const key = decodeSupplierKey(supplierKey);
+  const groups = getReadyToOrderEntries();
+  const group = groups[key];
+  if(!group){ toast('Nothing to order for that supplier'); return; }
+  if(!state.poCounters) state.poCounters = {};
+  if(!state.poCounters[key]) state.poCounters[key] = {number:1};
+  const poNumber = state.poCounters[key].number;
+  const contact = findSupplierContact(group.displayName);
+  const esc = s => String(s==null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const dateStr = new Date().toISOString().slice(0,10);
+  const lineRows = group.rows.map(r=>{
+    const lineTotal = r.cost * r.qty;
+    return `<tr>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc;">${esc(r.item)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc;">${esc(r.sku)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${r.qty}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(r.cost))}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc; text-align:right;">${esc(money(lineTotal))}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #e4d9cc;">${esc(r.projName)}</td>
+    </tr>`;
+  }).join('');
+  const grandTotal = group.rows.reduce((a,r)=>a + r.cost * r.qty, 0);
+  const contactLine = contact
+    ? [contact.phone, contact.email].filter(Boolean).map(esc).join(' &middot; ')
+    : '';
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PO #${poNumber} — ${esc(group.displayName)}</title>
+<style>
+  body{font-family:Arial, Helvetica, sans-serif; color:#2b2622; margin:32px; max-width:680px;}
+  h1{font-size:22px; margin:0 0 2px 0;}
+  .sub{color:#5c554d; font-size:13px; margin:0 0 4px 0;}
+  .meta{color:#5c554d; font-size:13px; margin:0 0 24px 0;}
+  table{border-collapse:collapse; width:100%; font-size:13px;}
+  th{text-align:left; padding:6px 8px; border-bottom:2px solid #2b2622; font-size:12px; text-transform:uppercase; letter-spacing:.03em;}
+  th:nth-child(3), th:nth-child(4), th:nth-child(5){text-align:right;}
+  .totals{width:100%; margin-top:16px; font-size:13px;}
+  .totals td{padding:4px 8px;}
+  .totals td:last-child{text-align:right; font-weight:600;}
+  .grand td{font-size:16px; border-top:2px solid #2b2622; padding-top:8px;}
+</style>
+</head>
+<body>
+  <h1>Purchase Order #${poNumber}</h1>
+  <p class="sub">${esc(group.displayName)}</p>
+  ${contactLine ? `<p class="sub">${contactLine}</p>` : ''}
+  <p class="meta">Date: ${esc(dateStr)}</p>
+
+  <table>
+    <thead>
+      <tr><th>Item</th><th>SKU</th><th>Qty</th><th>Unit cost</th><th>Line total</th><th>Project</th></tr>
+    </thead>
+    <tbody>${lineRows}</tbody>
+  </table>
+
+  <table class="totals">
+    <tr class="grand"><td>Total</td><td>${esc(money(grandTotal))}</td></tr>
+  </table>
+</body>
+</html>`;
+  const win = window.open('', '_blank');
+  if(!win){ toast('Pop-up blocked — allow pop-ups to print'); return; }
+  const doc = win.document;
+  doc.write(html);
+  doc.close();
+  win.print();
+
+  // Flip every item to Ordered on the real state.ffe[projId] arrays, batching one activity
+  // log entry per affected project rather than spamming one per item.
+  const itemsByProject = {};
+  group.rows.forEach(gr=>{
+    const rows = state.ffe[gr.projId];
+    if(!rows) return;
+    const row = rows.find(x=>x.id===gr.id);
+    if(!row) return;
+    setFfeStatus(row, 'Ordered');
+    if(!itemsByProject[gr.projId]) itemsByProject[gr.projId] = {projName: gr.projName, count:0};
+    itemsByProject[gr.projId].count++;
+  });
+  Object.keys(itemsByProject).forEach(projId=>{
+    const info = itemsByProject[projId];
+    logActivity(projId, `Generated PO #${poNumber} for ${group.displayName}, ${info.count} item${info.count===1?'':'s'} ordered`);
+  });
+  state.poCounters[key].number = poNumber + 1;
+  save(state);
+  closeModal();
+  toast(`PO #${poNumber} generated for ${group.displayName}`);
+  renderProcurement();
 }
 
 function openNewProject(){
