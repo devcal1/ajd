@@ -207,7 +207,10 @@
           <h1 class="font-display text-3xl" style="color:var(--ink)">Library</h1>
           <p class="text-sm mt-1" style="color:var(--ink-soft)">Every product clipped across every project — import any of it into any FF&amp;E schedule</p>
         </div>
-        <input id="library-search" placeholder="Search products, suppliers, categories..." oninput="filterLibrary(this.value)" class="border rounded-lg px-3 py-2 text-sm w-64" style="border-color:var(--line)">
+        <div class="flex items-center gap-2">
+          <input id="library-search" placeholder="Search products, suppliers, categories..." oninput="filterLibrary(this.value)" class="border rounded-lg px-3 py-2 text-sm w-64" style="border-color:var(--line)">
+          <button onclick="openNewLibraryClip()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0">+ Add product</button>
+        </div>
       </div>
       <div id="library-summary" class="flex flex-wrap gap-2 mb-6 hidden"></div>
       <div id="library-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
@@ -614,6 +617,11 @@ if(!state.boards) state.boards = {}; // migrate state saved before the board tab
 if(!state.comments) state.comments = {}; // migrate state saved before client comments existed
 if(!state.lastSeenByStaff) state.lastSeenByStaff = {}; // migrate state saved before unread-comment tracking existed; absence means "never seen"
 if(!state.poCounters) state.poCounters = {}; // migrate state saved before purchase orders existed; keyed by lowercase-trimmed supplier name -> {number}
+// pseudo-project bucket for library products clipped without being attached to any project —
+// lives inside state.clips exactly like a real project's clip array (same shape, same import/
+// aggregation code path), just keyed by this constant instead of a project id
+const LIBRARY_BUCKET = '_library';
+if(!state.clips[LIBRARY_BUCKET]) state.clips[LIBRARY_BUCKET] = [];
 let boardsMigrated = false;
 state.projects.forEach(p=>{
   if(!state.boards[p.id]){ state.boards[p.id] = {columns: defaultBoardColumns(), cards: []}; boardsMigrated = true; }
@@ -1565,6 +1573,10 @@ function getLibraryItems(){
       items.push(Object.assign({}, c, {projId:p.id, projName:p.name}));
     });
   });
+  // products clipped straight into the library, not attached to any project
+  (state.clips[LIBRARY_BUCKET]||[]).forEach(c=>{
+    items.push(Object.assign({}, c, {projId:LIBRARY_BUCKET, projName:null}));
+  });
   return items.sort((a,b)=> (b.addedDate||'').localeCompare(a.addedDate||'') || (a.title||'').localeCompare(b.title||''));
 }
 function renderLibrary(){
@@ -1584,7 +1596,8 @@ function renderLibrary(){
     emptyEl.className = 'text-center py-16';
     emptyEl.innerHTML = `
       <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No products in the library yet</h3>
-      <p class="text-sm" style="color:var(--ink-soft)">Every item saved from a project's Web Clipper collects here automatically — ready to import into any other project's FF&amp;E schedule.</p>
+      <p class="text-sm mb-5" style="color:var(--ink-soft)">Every item saved from a project's Web Clipper collects here automatically — or add a product straight to the library, no project required — ready to import into any FF&amp;E schedule.</p>
+      <button onclick="openNewLibraryClip()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add product</button>
     `;
     return;
   }
@@ -1611,6 +1624,13 @@ function libraryCardHtml(c){
   const specBits = [c.supplier, c.sku, c.dimensions, c.finish].filter(Boolean);
   const categoryChip = c.category ? categoryChipHtml(c.category) : '';
   const costHtml = c.cost ? `<span class="text-sm font-medium flex-shrink-0">${money(c.cost)}</span>` : '';
+  const isUnattached = c.projId === LIBRARY_BUCKET;
+  const originHtml = isUnattached
+    ? `<span class="text-xs truncate" style="color:var(--ink-soft)">Library item</span>`
+    : `<a href="#/project/${c.projId}" onclick="activeTab='clipper'" class="text-xs truncate" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">From ${c.projName}</a>`;
+  const deleteBtn = isUnattached
+    ? `<button onclick="deleteLibraryClip('${c.id}')" title="Remove from library" class="text-sm leading-none flex-shrink-0 hover:text-[var(--red)]" style="color:var(--ink-soft)">&times;</button>`
+    : '';
   return `
     <div class="card overflow-hidden">
       <div class="relative h-36">
@@ -1626,8 +1646,11 @@ function libraryCardHtml(c){
         ${specBits.length ? `<p class="text-xs mt-1.5" style="color:var(--ink-soft)">${specBits.join(' · ')}</p>` : ''}
         ${c.notes ? `<p class="text-xs mt-1.5 italic" style="color:var(--ink-soft)">${c.notes}</p>` : ''}
         <div class="flex items-center justify-between gap-2 mt-3 pt-3" style="border-top:1px solid var(--line)">
-          <a href="#/project/${c.projId}" onclick="activeTab='clipper'" class="text-xs truncate" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">From ${c.projName}</a>
-          <button onclick="openImportLibraryItem('${c.projId}','${c.id}')" class="btn-ghost px-3 py-1 rounded-lg text-xs font-semibold flex-shrink-0">Import to project</button>
+          ${originHtml}
+          <span class="flex items-center gap-2 flex-shrink-0">
+            <button onclick="openImportLibraryItem('${c.projId}','${c.id}')" class="btn-ghost px-3 py-1 rounded-lg text-xs font-semibold">Import to project</button>
+            ${deleteBtn}
+          </span>
         </div>
       </div>
     </div>
@@ -1695,6 +1718,39 @@ function importLibraryItem(sourceProjId, clipId){
   if(currentProjectId() === targetProjId){
     renderFfe(targetProjId); renderNextActions(targetProjId); renderProjectStats(targetProjId);
   }
+}
+// "+ Add product" on the Library page itself — clips a product straight into the library
+// with no project attached (state.clips[LIBRARY_BUCKET]), for things worth cataloguing before
+// any project needs them yet: a supplier's whole new range, a favourite go-to fixture, etc.
+// Reuses the same clipFormBodyHtml as a project's Web Clipper, just without the project-only
+// fields (client-moodboard flag, FF&E link) that wouldn't mean anything without a project.
+function openNewLibraryClip(){
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Add product to library</h3>
+    <div class="space-y-3">${clipFormBodyHtml(LIBRARY_BUCKET, null)}</div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="createLibraryClip()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function createLibraryClip(){
+  const fields = readClipForm();
+  if(!fields.title || !fields.image){ toast('Title and image required'); return; }
+  if(!state.clips[LIBRARY_BUCKET]) state.clips[LIBRARY_BUCKET] = [];
+  state.clips[LIBRARY_BUCKET].push(Object.assign({id:uid('c'), addedDate:todayISO()}, fields));
+  save(state); closeModal(); toast('Added to library');
+  renderLibrary();
+}
+function deleteLibraryClip(clipId){
+  const rows = state.clips[LIBRARY_BUCKET];
+  if(!rows) return;
+  const c = rows.find(x=>x.id===clipId);
+  if(!c) return;
+  if(!confirm(`Remove "${c.title}" from the library?`)) return;
+  state.clips[LIBRARY_BUCKET] = rows.filter(x=>x.id!==clipId);
+  save(state); toast('Removed from library');
+  renderLibrary();
 }
 
 // Confirmation modal before generating a PO for one supplier group: lists every item with its
@@ -3174,9 +3230,19 @@ function clipSupplierFieldHtml(id, value){
 // title/url/image is optional, but filling them in is what turns a moodboard pin into
 // a genuinely reusable product-library record (see the Library cross-project view).
 function clipFormBodyHtml(id, c){
-  const ffeRows = state.ffe[id] || [];
-  const linkedFfeId = c ? findFfeClipLink(id, c.id) : null;
+  const isLibraryOnly = id === LIBRARY_BUCKET;
+  const ffeRows = isLibraryOnly ? [] : (state.ffe[id] || []);
+  const linkedFfeId = (c && !isLibraryOnly) ? findFfeClipLink(id, c.id) : null;
   const ffeOptions = ffeRows.map(r=>`<option value="${r.id}" ${r.id===linkedFfeId?'selected':''}>${r.item}</option>`).join('');
+  const projectOnlyFieldsHtml = isLibraryOnly ? '' : `
+    <label class="text-sm flex items-center gap-2"><input id="nc-client" type="checkbox" ${!c || c.forClient?'checked':''}> Show on client moodboard</label>
+    <div>
+      <label class="text-xs block mb-1" style="color:var(--ink-soft)">Link to FF&amp;E item (optional)</label>
+      <select id="nc-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">None</option>${ffeOptions}
+      </select>
+    </div>
+  `;
   return `
     <input id="nc-title" value="${c?c.title||'':''}" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
     <input id="nc-url" value="${c?c.url||'':''}" placeholder="Source / product URL" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
@@ -3193,13 +3259,7 @@ function clipFormBodyHtml(id, c){
     <input id="nc-finish" value="${c?c.finish||'':''}" placeholder="Finish / material / colour" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
     <input id="nc-cost" type="number" min="0" value="${c&&c.cost?c.cost:''}" placeholder="Typical cost" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
     <textarea id="nc-notes" placeholder="Notes (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="2">${c?c.notes||'':''}</textarea>
-    <label class="text-sm flex items-center gap-2"><input id="nc-client" type="checkbox" ${!c || c.forClient?'checked':''}> Show on client moodboard</label>
-    <div>
-      <label class="text-xs block mb-1" style="color:var(--ink-soft)">Link to FF&amp;E item (optional)</label>
-      <select id="nc-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
-        <option value="">None</option>${ffeOptions}
-      </select>
-    </div>
+    ${projectOnlyFieldsHtml}
   `;
 }
 // reverse-lookup: which FF&E item (if any) currently links to this clip, so the edit form
@@ -3254,8 +3314,11 @@ function updateClipPreview(){
   if(!url){ img.style.display = 'none'; img.removeAttribute('src'); return; }
   img.src = url;
 }
-// reads every clipFormBodyHtml field into a plain object shared by createClip/saveClip
+// reads every clipFormBodyHtml field into a plain object shared by createClip/saveClip/
+// createLibraryClip — nc-client is absent for a library-only clip (see clipFormBodyHtml),
+// so that field just reads as false rather than throwing
 function readClipForm(){
+  const clientEl = document.getElementById('nc-client');
   return {
     title: document.getElementById('nc-title').value.trim(),
     url: document.getElementById('nc-url').value.trim() || '#',
@@ -3267,7 +3330,7 @@ function readClipForm(){
     finish: document.getElementById('nc-finish').value.trim() || null,
     cost: Number(document.getElementById('nc-cost').value) || null,
     notes: document.getElementById('nc-notes').value.trim() || null,
-    forClient: document.getElementById('nc-client').checked
+    forClient: clientEl ? clientEl.checked : false
   };
 }
 function createClip(id){
