@@ -6,44 +6,48 @@
 <title>AJD — Practice Manager</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  /* Palette + type drawn from the ajinteriors.com.au brand: warm stone/greige grounds,
+     a single dusty clay accent, Libre Baskerville standing in for their Baskerville
+     display face, Inter kept only where a dense table/form needs a plainer workhorse. */
   :root{
-    --ink:#2b2622;
-    --ink-soft:#5c554d;
-    --paper:#faf6f1;
-    --paper-2:#f2ece3;
-    --terracotta:#c1613f;
-    --terracotta-dark:#a24e30;
-    --terracotta-soft:#f1ddd2;
-    --line:#e4d9cc;
-    --green:#6b7d5a;
-    --amber:#c98a2c;
-    --red:#b3462c;
+    --ink:#211e1a;
+    --ink-soft:#6d6459;
+    --paper:#f1efe8;
+    --paper-2:#dcd6c9;
+    --terracotta:#9c8b7e;
+    --terracotta-dark:#7d6d61;
+    --terracotta-soft:#eae4da;
+    --line:#d9d2c2;
+    --green:#75805f;
+    --amber:#b3894f;
+    --red:#a15b45;
   }
   *{font-family:'Inter',sans-serif;}
-  .font-display{font-family:'Fraunces',serif;}
+  .font-display{font-family:'Libre Baskerville', Georgia, serif;}
   body{background:var(--paper); color:var(--ink);}
-  .card{background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 2px rgba(43,38,34,.04);}
+  .card{background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:0 1px 2px rgba(33,30,26,.04);}
   .card-hover{transition:box-shadow .15s ease, transform .15s ease;}
-  .card-hover:hover{box-shadow:0 8px 20px rgba(43,38,34,.09); transform:translateY(-1px);}
+  .card-hover:hover{box-shadow:0 10px 24px rgba(33,30,26,.10); transform:translateY(-1px);}
   .tag{display:inline-flex; align-items:center; gap:.25rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:999px;}
-  .tag-pending{background:#fbf0dd; color:var(--amber);}
-  .tag-approved{background:#e9efe4; color:var(--green);}
-  .tag-rejected{background:#f7e3dc; color:var(--red);}
+  .tag-pending{background:#f1e6d5; color:var(--amber);}
+  .tag-approved{background:#e7e9e0; color:var(--green);}
+  .tag-rejected{background:#ecdcd4; color:var(--red);}
   .tag-status{background:var(--paper-2); color:var(--ink-soft);}
+  .btn-primary,.btn-ghost{border-radius:999px !important;}
   .btn-primary{background:var(--terracotta); color:#fff;}
   .btn-primary:hover{background:var(--terracotta-dark);}
   .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink);}
   .btn-ghost:hover{background:var(--paper-2);}
   ::-webkit-scrollbar{width:10px; height:10px;}
   ::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;}
-  .tab-strip-group{display:flex; align-items:center; flex-wrap:wrap; gap:.15rem; padding:.3rem; border-radius:12px; background:var(--paper-2);}
+  .tab-strip-group{display:flex; align-items:center; flex-wrap:wrap; gap:.15rem; padding:.3rem; border-radius:999px; background:var(--paper-2);}
   .tab-strip-group-label{font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); opacity:.7; padding:0 .6rem;}
-  .tab-btn{padding:.45rem .8rem; border-radius:8px; font-size:.83rem; white-space:nowrap; transition:background .15s ease, color .15s ease;}
+  .tab-btn{padding:.45rem .9rem; border-radius:999px; font-size:.83rem; white-space:nowrap; transition:background .15s ease, color .15s ease;}
   .tab-inactive{color:var(--ink-soft);}
   .tab-inactive:hover{color:var(--ink); background:rgba(255,255,255,.6);}
-  .tab-active{background:#fff; color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(43,38,34,.08);}
+  .tab-active{background:#fff; color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(33,30,26,.08);}
   [data-route]{display:none;}
   .toast{position:fixed; bottom:1.25rem; right:1.25rem; z-index:50; background:var(--ink); color:#fff; padding:.65rem 1rem; border-radius:10px; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.18); opacity:0; transform:translateY(8px); transition:.2s;}
   .toast.show{opacity:1; transform:translateY(0);}
@@ -52,6 +56,9 @@
   input:not([type=checkbox]):not([type=radio]), textarea, select{ transition: border-color .15s ease, box-shadow .15s ease; }
   input:not([type=checkbox]):not([type=radio]):focus, textarea:focus, select:focus{ outline:none; border-color:var(--terracotta); box-shadow:0 0 0 3px var(--terracotta-soft); }
   button:focus-visible, a:focus-visible{ outline:2px solid var(--terracotta); outline-offset:2px; }
+  .nav-link{position:relative; padding-bottom:2px; border-bottom:1px solid transparent;}
+  .nav-link.nav-active{color:var(--ink) !important; border-bottom-color:var(--ink);}
+  .wave-divider{display:block; width:100%; height:32px; margin-top:-1px;}
 </style>
 </head>
 <body class="min-h-screen">
@@ -60,15 +67,15 @@
 <div id="shell" data-route="shell">
   <header class="border-b" style="border-color:var(--line); background:#fff;">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="#/" class="font-display text-2xl tracking-tight flex-shrink-0 mr-4" style="color:var(--terracotta-dark)">AJD</a>
-      <nav class="text-sm font-medium flex gap-6 flex-nowrap overflow-x-auto min-w-0" style="color:var(--ink-soft)">
-        <a href="#/" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Projects</a>
-        <a href="#/team" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Team</a>
-        <a href="#/calendar" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Deadlines</a>
-        <a href="#/procurement" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Procurement</a>
-        <a href="#/approvals" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
-        <a href="#/budget" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Budget</a>
-        <a href="#/boards" class="hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Boards</a>
+      <a href="#/" class="font-display text-2xl flex-shrink-0 mr-4" style="color:var(--ink)">AJD</a>
+      <nav id="main-nav" class="text-sm flex gap-6 flex-nowrap overflow-x-auto min-w-0" style="color:var(--ink-soft)">
+        <a href="#/" data-route-prefix="#/" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Projects</a>
+        <a href="#/team" data-route-prefix="#/team" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Team</a>
+        <a href="#/calendar" data-route-prefix="#/calendar" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Deadlines</a>
+        <a href="#/procurement" data-route-prefix="#/procurement" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Procurement</a>
+        <a href="#/approvals" data-route-prefix="#/approvals" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
+        <a href="#/budget" data-route-prefix="#/budget" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Budget</a>
+        <a href="#/boards" data-route-prefix="#/boards" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Boards</a>
       </nav>
     </div>
   </header>
@@ -400,22 +407,31 @@
 
 <!-- ============ CLIENT PORTAL (standalone, bypasses shell) ============ -->
 <div id="portal-view" data-route="portal" class="min-h-screen">
-  <div class="max-w-3xl mx-auto px-6 py-10">
-    <div class="flex items-center justify-between mb-6">
-      <span class="font-display text-2xl" style="color:var(--terracotta-dark)">AJD</span>
-      <span class="text-sm" style="color:var(--ink-soft)">Client Portal</span>
-    </div>
+  <div style="background:#fff;">
+    <div class="max-w-3xl mx-auto px-6 pt-10 pb-8">
+      <div class="flex items-center justify-between mb-6">
+        <span class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</span>
+        <span class="text-sm" style="color:var(--ink-soft)">Client Portal</span>
+      </div>
 
-    <div id="portal-hero" class="relative rounded-2xl overflow-hidden mb-4 bg-cover bg-center" style="height:140px; background-color:var(--paper-2);">
-      <div class="absolute inset-0" style="background:linear-gradient(to top, rgba(0,0,0,.68) 0%, rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 100%);"></div>
-      <div class="absolute top-3 right-3">
-        <span id="portal-hero-status" class="tag" style="background:rgba(255,255,255,.92); backdrop-filter:blur(4px);"></span>
-      </div>
-      <div class="absolute left-4 right-4 bottom-3">
-        <h1 id="portal-proj-name" class="font-display text-3xl text-white leading-tight" style="text-shadow:0 1px 6px rgba(0,0,0,.45)"></h1>
-        <p id="portal-proj-client" class="text-sm mt-0.5" style="color:rgba(255,255,255,.88); text-shadow:0 1px 4px rgba(0,0,0,.45)"></p>
+      <div id="portal-hero" class="relative rounded-2xl overflow-hidden bg-cover bg-center" style="height:160px; background-color:var(--paper-2);">
+        <div class="absolute inset-0" style="background:linear-gradient(to top, rgba(0,0,0,.68) 0%, rgba(0,0,0,.18) 55%, rgba(0,0,0,0) 100%);"></div>
+        <div class="absolute top-3 right-3">
+          <span id="portal-hero-status" class="tag" style="background:rgba(255,255,255,.92); backdrop-filter:blur(4px);"></span>
+        </div>
+        <div class="absolute left-4 right-4 bottom-3">
+          <h1 id="portal-proj-name" class="font-display text-3xl text-white leading-tight" style="text-shadow:0 1px 6px rgba(0,0,0,.45)"></h1>
+          <p id="portal-proj-client" class="text-sm mt-0.5" style="color:rgba(255,255,255,.88); text-shadow:0 1px 4px rgba(0,0,0,.45)"></p>
+        </div>
       </div>
     </div>
+  </div>
+  <svg class="wave-divider" viewBox="0 0 1440 40" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0,0 L1440,0 L1440,14 C1140,34 700,6 0,26 Z" fill="var(--paper)"></path>
+  </svg>
+
+  <div class="max-w-3xl mx-auto px-6 pb-10">
+    <p class="font-display text-lg italic mb-8 mt-1" style="color:var(--ink-soft)">Every detail of your project, gathered in one place.</p>
 
     <div id="portal-progress" class="flex flex-wrap items-center gap-2 mb-8"></div>
 
@@ -446,7 +462,8 @@
     <h2 class="font-display text-xl mb-3">Approvals</h2>
     <div id="portal-approvals" class="space-y-3"></div>
 
-    <h2 class="font-display text-xl mb-3 mt-10">Questions &amp; Comments</h2>
+    <h2 class="font-display text-xl mb-1 mt-10">Say hello</h2>
+    <p class="text-sm mb-3" style="color:var(--ink-soft)">Questions, thoughts, a change of heart on the sofa fabric — leave it here.</p>
     <div class="card p-4 mb-4">
       <textarea id="portal-comment-text" placeholder="Ask a question or leave a comment..." class="w-full border rounded-lg px-3 py-2 text-sm mb-2" style="border-color:var(--line)" rows="3"></textarea>
       <div class="flex justify-end">
@@ -640,8 +657,20 @@ function toggleFfeGroupByRoom(){
   renderFfe(currentProjectId());
 }
 
+// highlights whichever top-nav link matches the current section, echoing the
+// understated active-page underline on the ajinteriors.com.au nav
+function updateNavActive(){
+  const h = location.hash || '#/';
+  const isDashboardSection = h === '#/' || h === '' || h.startsWith('#/project/');
+  document.querySelectorAll('#main-nav .nav-link').forEach(a=>{
+    const prefix = a.dataset.routePrefix;
+    const active = prefix === '#/' ? isDashboardSection : h.startsWith(prefix);
+    a.classList.toggle('nav-active', active);
+  });
+}
 function route(){
   const h = location.hash || '#/';
+  updateNavActive();
   document.querySelectorAll('[data-route]').forEach(el=>el.style.display='none');
 
   if(h.startsWith('#/trades/')){
