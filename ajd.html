@@ -76,6 +76,7 @@
         <a href="#/approvals" data-route-prefix="#/approvals" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Approvals</a>
         <a href="#/budget" data-route-prefix="#/budget" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Budget</a>
         <a href="#/boards" data-route-prefix="#/boards" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Boards</a>
+        <a href="#/library" data-route-prefix="#/library" class="nav-link hover:text-[var(--ink)] flex-shrink-0 whitespace-nowrap">Library</a>
       </nav>
     </div>
   </header>
@@ -195,6 +196,22 @@
       </div>
       <div id="boards-list" class="space-y-4"></div>
       <div id="boards-empty" class="hidden text-center py-16"></div>
+    </section>
+
+    <!-- Product Library (cross-project) — every web clip saved anywhere becomes a reusable,
+         fully-specced product record here; any of them can be imported straight into any
+         project's FF&E schedule instead of re-typing supplier/SKU/dimensions from scratch. -->
+    <section data-route="library">
+      <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 class="font-display text-3xl" style="color:var(--ink)">Library</h1>
+          <p class="text-sm mt-1" style="color:var(--ink-soft)">Every product clipped across every project — import any of it into any FF&amp;E schedule</p>
+        </div>
+        <input id="library-search" placeholder="Search products, suppliers, categories..." oninput="filterLibrary(this.value)" class="border rounded-lg px-3 py-2 text-sm w-64" style="border-color:var(--line)">
+      </div>
+      <div id="library-summary" class="flex flex-wrap gap-2 mb-6 hidden"></div>
+      <div id="library-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <div id="library-empty" class="hidden text-center py-16"></div>
     </section>
 
     <!-- Project detail -->
@@ -400,8 +417,14 @@
       <span class="tag tag-status" style="background:rgba(255,255,255,.12); color:#fff">Trade access</span>
     </div>
     <h1 id="trades-proj-name" class="font-display text-2xl mb-1"></h1>
-    <p class="text-sm opacity-70 mb-6">Site tasks — no login required, share this link with trades.</p>
-    <div id="trades-list" class="space-y-3"></div>
+    <p class="text-sm opacity-70 mb-6">No login required — share this link with trades on site.</p>
+
+    <h2 class="font-display text-lg mb-3">Site tasks</h2>
+    <div id="trades-list" class="space-y-3 mb-8"></div>
+
+    <h2 class="font-display text-lg mb-1">Materials &amp; FF&amp;E</h2>
+    <p class="text-xs opacity-60 mb-3">Items the designer has flagged for the builder — dimensions and supplier detail for install day, no pricing.</p>
+    <div id="trades-ffe-list" class="space-y-3"></div>
   </div>
 </div>
 
@@ -501,15 +524,18 @@ function seed(){
     ],
     ffe: {
       p1: [
-        {id:'f1', item:'Oak dining table', category:'Furniture', supplier:'Modern Times', qty:1, cost:4200, status:'Ordered', orderDate:seedDaysAgo(14), deliveredDate:null},
-        {id:'f2', item:'Pendant light — brass', category:'Lighting', supplier:'Articolo', qty:3, cost:1650, status:'Specified', orderDate:null, deliveredDate:null},
+        {id:'f1', item:'Oak dining table', category:'Furniture', supplier:'Modern Times', dimensions:'2100 x 950 x 750mm', finish:'Natural oak, oiled', qty:1, cost:4200, status:'Ordered', orderDate:seedDaysAgo(14), deliveredDate:null, showToTrade:true},
+        {id:'f2', item:'Pendant light — brass', category:'Lighting', supplier:'Articolo', qty:3, cost:1650, status:'Specified', orderDate:null, deliveredDate:null, showToTrade:true},
         {id:'f3', item:'Rug — natural jute', category:'Soft furnishings', supplier:'Articolo', qty:1, cost:890, status:'Delivered', orderDate:seedDaysAgo(35), deliveredDate:seedDaysAgo(12)}
       ],
       p2: []
     },
     time: { p1: [ {id:'t1', person:'Ava', date:'2026-08-20', hours:3.5, note:'Site measure + client walkthrough'} ], p2: [] },
     clips: {
-      p1: [ {id:'c1', title:'Herringbone oak flooring', url:'https://example.com/flooring', image:'https://images.unsplash.com/photo-1616627981435-e962a2bf0791?w=600', forClient:true} ],
+      p1: [
+        {id:'c1', title:'Herringbone oak flooring', url:'https://example.com/flooring', image:'https://images.unsplash.com/photo-1622372738946-62e02505feb3?w=600', forClient:true, category:'Flooring', supplier:'Made Earth Timber', sku:'HB-OAK-190', dimensions:'190 x 1200mm boards', finish:'Natural oak, matte seal', cost:145, notes:'Sample requested for site — check against existing skirting.', addedDate:seedDaysAgo(20)},
+        {id:'c2', title:'Arc floor lamp — woven shade', url:'https://example.com/arc-lamp', image:'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=600', forClient:true, category:'Lighting', supplier:'Articolo', sku:'ARC-140-RTN', dimensions:'1400mm h x 400mm shade', finish:'Rattan shade, brushed brass stem', cost:620, notes:'Reads well against the Fairlight palette — worth reusing on Bondi.', addedDate:seedDaysAgo(6)}
+      ],
       p2: []
     },
     approvals: {
@@ -707,6 +733,9 @@ function route(){
   } else if(h.startsWith('#/boards')){
     document.querySelector('#shell [data-route="boards"]').style.display='block';
     renderBoardOverview();
+  } else if(h.startsWith('#/library')){
+    document.querySelector('#shell [data-route="library"]').style.display='block';
+    renderLibrary();
   } else {
     document.querySelector('#shell [data-route="dashboard"]').style.display='block';
     renderDashboard();
@@ -1519,6 +1548,155 @@ function renderBoardOverview(){
   listEl.innerHTML = entries.map(boardOverviewCardHtml).join('');
 }
 
+/* ---------- product library (cross-project) ----------
+   Not a separate data store — the library IS the union of every project's Web Clipper
+   clips (state.clips[projId]), each already carrying full product spec fields (category/
+   supplier/sku/dimensions/finish/cost/specUrl/notes — see openNewClip). Saving a clip
+   anywhere therefore adds it to the library automatically; nothing else to keep in sync. */
+let libraryFilter = '';
+function filterLibrary(value){
+  libraryFilter = (value||'').toLowerCase();
+  renderLibrary();
+}
+function getLibraryItems(){
+  const items = [];
+  state.projects.filter(p=>!p.archived).forEach(p=>{
+    (state.clips[p.id]||[]).forEach(c=>{
+      items.push(Object.assign({}, c, {projId:p.id, projName:p.name}));
+    });
+  });
+  return items.sort((a,b)=> (b.addedDate||'').localeCompare(a.addedDate||'') || (a.title||'').localeCompare(b.title||''));
+}
+function renderLibrary(){
+  const grid = document.getElementById('library-grid');
+  const emptyEl = document.getElementById('library-empty');
+  const summaryEl = document.getElementById('library-summary');
+  if(!grid || !emptyEl) return;
+  const searchInput = document.getElementById('library-search');
+  if(searchInput && searchInput.value !== libraryFilter && document.activeElement !== searchInput){
+    searchInput.value = libraryFilter;
+  }
+  const all = getLibraryItems();
+  if(!all.length){
+    grid.innerHTML = '';
+    summaryEl.classList.add('hidden');
+    emptyEl.classList.remove('hidden');
+    emptyEl.className = 'text-center py-16';
+    emptyEl.innerHTML = `
+      <h3 class="font-display text-2xl mb-2" style="color:var(--ink)">No products in the library yet</h3>
+      <p class="text-sm" style="color:var(--ink-soft)">Every item saved from a project's Web Clipper collects here automatically — ready to import into any other project's FF&amp;E schedule.</p>
+    `;
+    return;
+  }
+  const filtered = libraryFilter ? all.filter(c=>
+    (c.title||'').toLowerCase().includes(libraryFilter) ||
+    (c.supplier||'').toLowerCase().includes(libraryFilter) ||
+    (c.category||'').toLowerCase().includes(libraryFilter)
+  ) : all;
+  emptyEl.classList.toggle('hidden', filtered.length>0);
+  if(!filtered.length){
+    emptyEl.className = 'text-center py-10 text-sm';
+    emptyEl.style.color = 'var(--ink-soft)';
+    emptyEl.textContent = 'No products match';
+  }
+  const supplierCount = new Set(all.map(c=>c.supplier).filter(Boolean)).size;
+  summaryEl.classList.remove('hidden');
+  summaryEl.innerHTML = `
+    <span class="tag tag-status">${all.length} product${all.length===1?'':'s'}</span>
+    <span class="tag tag-status">${supplierCount} supplier${supplierCount===1?'':'s'}</span>
+  `;
+  grid.innerHTML = filtered.map(libraryCardHtml).join('');
+}
+function libraryCardHtml(c){
+  const specBits = [c.supplier, c.sku, c.dimensions, c.finish].filter(Boolean);
+  const categoryChip = c.category ? categoryChipHtml(c.category) : '';
+  const costHtml = c.cost ? `<span class="text-sm font-medium flex-shrink-0">${money(c.cost)}</span>` : '';
+  return `
+    <div class="card overflow-hidden">
+      <div class="relative h-36">
+        <img src="${c.image}" alt="${c.title}" class="w-full h-36 object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+        <div class="hidden w-full h-36 items-center justify-center text-xs" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>
+        ${categoryChip ? `<span class="absolute top-2 left-2">${categoryChip}</span>` : ''}
+      </div>
+      <div class="p-3">
+        <div class="flex items-start justify-between gap-2">
+          <a href="${c.url}" target="_blank" rel="noopener" class="font-display text-base leading-tight hover:underline">${c.title}</a>
+          ${costHtml}
+        </div>
+        ${specBits.length ? `<p class="text-xs mt-1.5" style="color:var(--ink-soft)">${specBits.join(' · ')}</p>` : ''}
+        ${c.notes ? `<p class="text-xs mt-1.5 italic" style="color:var(--ink-soft)">${c.notes}</p>` : ''}
+        <div class="flex items-center justify-between gap-2 mt-3 pt-3" style="border-top:1px solid var(--line)">
+          <a href="#/project/${c.projId}" onclick="activeTab='clipper'" class="text-xs truncate" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted;">From ${c.projName}</a>
+          <button onclick="openImportLibraryItem('${c.projId}','${c.id}')" class="btn-ghost px-3 py-1 rounded-lg text-xs font-semibold flex-shrink-0">Import to project</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+// import modal: pick a destination project (any project, not just the clip's home project) +
+// optional room/qty/cost overrides, then copy the clip's full spec into a new FF&E row there
+function openImportLibraryItem(sourceProjId, clipId){
+  const clip = (state.clips[sourceProjId]||[]).find(c=>c.id===clipId);
+  if(!clip){ toast('Product not found'); return; }
+  const projectOptions = state.projects.filter(p=>!p.archived).map(p=>`<option value="${p.id}" ${p.id===sourceProjId?'selected':''}>${p.name}</option>`).join('');
+  showModal(`
+    <h3 class="font-display text-xl mb-1">Import to FF&amp;E schedule</h3>
+    <p class="text-sm mb-4" style="color:var(--ink-soft)">${clip.title}</p>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Project</label>
+        <select id="li-project" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">${projectOptions}</select>
+      </div>
+      <input id="li-room" placeholder="Room (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <div class="flex gap-3">
+        <input id="li-qty" type="number" min="1" value="1" placeholder="Qty" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <input id="li-cost" type="number" min="0" value="${Number(clip.cost)||0}" placeholder="Cost" class="w-1/2 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="importLibraryItem('${sourceProjId}','${clipId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Import</button>
+    </div>
+  `);
+}
+function importLibraryItem(sourceProjId, clipId){
+  const clip = (state.clips[sourceProjId]||[]).find(c=>c.id===clipId);
+  if(!clip){ toast('Product not found'); return; }
+  const targetProjId = document.getElementById('li-project').value;
+  if(!targetProjId || !state.ffe[targetProjId]){ toast('Choose a project'); return; }
+  const newItem = {
+    id: uid('f'),
+    item: clip.title,
+    room: document.getElementById('li-room').value.trim() || null,
+    category: clip.category || 'Uncategorised',
+    sku: clip.sku || null,
+    dimensions: clip.dimensions || null,
+    finish: clip.finish || null,
+    specUrl: clip.specUrl || clip.url || null,
+    supplier: clip.supplier || '—',
+    qty: Number(document.getElementById('li-qty').value) || 1,
+    cost: Number(document.getElementById('li-cost').value) || 0,
+    orderDate: null,
+    deliveredDate: null,
+    expectedDate: null,
+    // a clip only exists in its home project's array, so an FF&E thumbnail link only works
+    // when importing within that same project — cross-project imports still copy every spec
+    // field, just without the live thumbnail reference
+    clipId: (targetProjId === sourceProjId) ? clip.id : null,
+    forClient: false,
+    showToTrade: false
+  };
+  setFfeStatus(newItem, 'Specified');
+  state.ffe[targetProjId].push(newItem);
+  save(state);
+  logActivity(targetProjId, `Imported from library: ${clip.title}`);
+  closeModal();
+  toast('Imported to FF&E schedule');
+  if(currentProjectId() === targetProjId){
+    renderFfe(targetProjId); renderNextActions(targetProjId); renderProjectStats(targetProjId);
+  }
+}
+
 // Confirmation modal before generating a PO for one supplier group: lists every item with its
 // project/qty/cost/line total, a grand total, and the resolved supplier contact (if any) so the
 // user can sanity-check before it fires (flips every row to "Ordered" + prints a document).
@@ -1728,8 +1906,8 @@ function runGlobalSearch(query){
       }
     });
     (state.clips[id]||[]).forEach(c=>{
-      if((c.title||'').toLowerCase().includes(q)){
-        hits.push({projId:id, label:`${p.name} — Clip: ${c.title}`});
+      if((c.title||'').toLowerCase().includes(q) || (c.category||'').toLowerCase().includes(q) || (c.supplier||'').toLowerCase().includes(q)){
+        hits.push({projId:id, label:`${p.name} — Library: ${c.title}`});
       }
     });
     (state.approvals[id]||[]).forEach(a=>{
@@ -2395,9 +2573,15 @@ function ffeRowHtml(id, r, idx, clips){
     r.finish ? `<div><span style="color:var(--ink-soft)">Finish:</span> ${r.finish}</div>` : '',
     r.specUrl ? `<div><a href="${r.specUrl}" target="_blank" rel="noopener" style="color:var(--terracotta-dark); text-decoration:underline;">View product</a></div>` : ''
   ].filter(Boolean).join('');
+  // which audience schedule(s) this item is opted into — mirrors the client-portal/job-site
+  // split: the same source row, shown (or not) on each shareable, audience-specific schedule
+  const audienceHtml = [
+    r.forClient ? `<span class="tag tag-status" title="Visible on the client schedule">Client</span>` : '',
+    r.showToTrade ? `<span class="tag tag-status" title="Visible on the builder schedule">Builder</span>` : ''
+  ].filter(Boolean).join(' ');
   return `
     <tr class="border-t" style="border-color:var(--line); ${rowBg}">
-      <td class="px-4 py-2">${caret}${thumb}${r.item} ${ffeApprovalBadgeHtml(id, r.id)}</td>
+      <td class="px-4 py-2">${caret}${thumb}${r.item} ${ffeApprovalBadgeHtml(id, r.id)} ${audienceHtml}</td>
       <td class="px-4 py-2">${categoryChipHtml(r.category)}</td>
       <td class="px-4 py-2" style="color:var(--ink-soft)">${r.supplier}</td>
       <td class="px-4 py-2">${r.qty}</td>
@@ -2671,7 +2855,8 @@ function openNewFfe(){
       <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
         <option value="">No reference</option>${clipOptions}
       </select>
-      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox"> Show on client portal</label>
+      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox"> Show on client schedule</label>
+      <label class="text-sm flex items-center gap-2"><input id="nf-trade" type="checkbox"> Show on builder schedule</label>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -2699,7 +2884,8 @@ function createFfe(id){
     deliveredDate: null,
     expectedDate: document.getElementById('nf-expected').value || null,
     clipId,
-    forClient: document.getElementById('nf-client').checked
+    forClient: document.getElementById('nf-client').checked,
+    showToTrade: document.getElementById('nf-trade').checked
   };
   setFfeStatus(newItem, document.getElementById('nf-status').value);
   state.ffe[id].push(newItem);
@@ -2737,7 +2923,8 @@ function editFfe(projId, itemId){
       <select id="nf-clip" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
         <option value="">No reference</option>${clipOptions}
       </select>
-      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox" ${r.forClient?'checked':''}> Show on client portal</label>
+      <label class="text-sm flex items-center gap-2"><input id="nf-client" type="checkbox" ${r.forClient?'checked':''}> Show on client schedule</label>
+      <label class="text-sm flex items-center gap-2"><input id="nf-trade" type="checkbox" ${r.showToTrade?'checked':''}> Show on builder schedule</label>
     </div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
@@ -2766,6 +2953,7 @@ function saveFfe(projId, itemId){
   r.expectedDate = document.getElementById('nf-expected').value || null;
   r.clipId = document.getElementById('nf-clip').value || null;
   r.forClient = document.getElementById('nf-client').checked;
+  r.showToTrade = document.getElementById('nf-trade').checked;
   save(state); closeModal(); toast('Item updated'); renderFfe(projId); renderNextActions(projId); renderProjectStats(projId);
 }
 
@@ -2942,13 +3130,23 @@ function saveTime(projId, entryId){
 function renderClips(id){
   const rows = state.clips[id] || [];
   document.getElementById('clip-empty').classList.toggle('hidden', rows.length>0);
-  document.getElementById('clip-grid').innerHTML = rows.map(c=>`
+  document.getElementById('clip-grid').innerHTML = rows.map(c=>{
+    const specBits = [c.supplier, c.sku, c.dimensions, c.finish].filter(Boolean);
+    const categoryChip = c.category ? `<span class="absolute top-2 left-2">${categoryChipHtml(c.category)}</span>` : '';
+    return `
     <div class="card overflow-hidden break-inside-avoid mb-4">
       <div class="group relative" tabindex="0">
         <img src="${c.image}" alt="${c.title}" class="w-full h-auto block" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
         <div class="hidden w-full items-center justify-center text-xs py-10" style="background:var(--paper-2); color:var(--ink-soft)">Image unavailable</div>
+        ${categoryChip}
         <div class="absolute inset-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex flex-col justify-end p-3" style="background:linear-gradient(to top, rgba(0,0,0,.72) 0%, rgba(0,0,0,.22) 55%, rgba(0,0,0,0) 100%);">
+          <span class="absolute top-2 right-2 flex items-center gap-1">
+            <button onclick="event.stopPropagation(); openImportLibraryItem('${id}','${c.id}')" title="Import to a project's FF&amp;E schedule" class="text-xs px-2 py-1 rounded-lg font-semibold" style="background:rgba(255,255,255,.92); color:var(--ink)">Import</button>
+            <button onclick="event.stopPropagation(); editClip('${id}','${c.id}')" title="Edit clip" class="text-xs w-6 h-6 rounded-full flex items-center justify-center" style="background:rgba(255,255,255,.92); color:var(--ink)">&#9998;</button>
+            <button onclick="event.stopPropagation(); deleteClip('${id}','${c.id}')" title="Delete clip" class="text-xs w-6 h-6 rounded-full flex items-center justify-center" style="background:rgba(255,255,255,.92); color:var(--red)">&times;</button>
+          </span>
           <a href="${c.url}" target="_blank" class="text-sm font-medium text-white hover:underline" style="text-shadow:0 1px 4px rgba(0,0,0,.45)">${c.title}</a>
+          ${specBits.length ? `<p class="text-xs mt-0.5 text-white" style="text-shadow:0 1px 4px rgba(0,0,0,.45)">${specBits.join(' · ')}</p>` : ''}
           <label class="text-xs flex items-center gap-1 mt-1.5 text-white" style="text-shadow:0 1px 4px rgba(0,0,0,.45)">
             <input type="checkbox" ${c.forClient?'checked':''} onchange="toggleClipClient('${id}','${c.id}', this.checked)"> Show client
           </label>
@@ -2956,39 +3154,95 @@ function renderClips(id){
       </div>
       <div class="px-3 py-2 text-xs truncate" style="color:var(--ink-soft)">${c.title}</div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 function toggleClipClient(id, clipId, checked){
   const c = state.clips[id].find(x=>x.id===clipId);
   if(c){ c.forClient = checked; save(state); }
 }
+// supplier datalist field for the clip form, mirroring ffeSupplierFieldHtml
+function clipSupplierFieldHtml(id, value){
+  const contacts = (state.contacts && state.contacts[id]) || [];
+  const options = contacts.map(c=>`<option value="${c.name}">`).join('');
+  return `
+    <input id="nc-supplier" list="nc-supplier-list" value="${value||''}" placeholder="Supplier (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <datalist id="nc-supplier-list">${options}</datalist>
+  `;
+}
+// shared add/edit clip form body — `c` is null for a new clip. Every field beyond
+// title/url/image is optional, but filling them in is what turns a moodboard pin into
+// a genuinely reusable product-library record (see the Library cross-project view).
+function clipFormBodyHtml(id, c){
+  const ffeRows = state.ffe[id] || [];
+  const linkedFfeId = c ? findFfeClipLink(id, c.id) : null;
+  const ffeOptions = ffeRows.map(r=>`<option value="${r.id}" ${r.id===linkedFfeId?'selected':''}>${r.item}</option>`).join('');
+  return `
+    <input id="nc-title" value="${c?c.title||'':''}" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <input id="nc-url" value="${c?c.url||'':''}" placeholder="Source / product URL" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <input id="nc-image" value="${c?c.image||'':''}" placeholder="Image URL" oninput="updateClipPreview()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <div>
+      <img id="nc-preview" alt="Preview" src="${c?c.image||'':''}" style="display:${c&&c.image?'block':'none'}" class="h-24 w-full object-cover rounded-lg" onload="document.getElementById('nc-preview').style.display='block'; document.getElementById('nc-preview-error').style.display='none';" onerror="document.getElementById('nc-preview').style.display='none'; document.getElementById('nc-preview-error').style.display='block';">
+      <p id="nc-preview-error" style="display:none; color:var(--ink-soft)" class="text-xs">Couldn't load image</p>
+    </div>
+    <div class="pt-2 mt-1 text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft); border-top:1px solid var(--line)">Product details (optional — builds the library)</div>
+    <input id="nc-category" value="${c?c.category||'':''}" placeholder="Category (e.g. Furniture)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    ${clipSupplierFieldHtml(id, c?c.supplier:'')}
+    <input id="nc-sku" value="${c?c.sku||'':''}" placeholder="SKU / model number" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <input id="nc-dimensions" value="${c?c.dimensions||'':''}" placeholder="Dimensions, e.g. 600 x 450 x 800mm" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <input id="nc-finish" value="${c?c.finish||'':''}" placeholder="Finish / material / colour" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <input id="nc-cost" type="number" min="0" value="${c&&c.cost?c.cost:''}" placeholder="Typical cost" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+    <textarea id="nc-notes" placeholder="Notes (optional)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" rows="2">${c?c.notes||'':''}</textarea>
+    <label class="text-sm flex items-center gap-2"><input id="nc-client" type="checkbox" ${!c || c.forClient?'checked':''}> Show on client moodboard</label>
+    <div>
+      <label class="text-xs block mb-1" style="color:var(--ink-soft)">Link to FF&amp;E item (optional)</label>
+      <select id="nc-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <option value="">None</option>${ffeOptions}
+      </select>
+    </div>
+  `;
+}
+// reverse-lookup: which FF&E item (if any) currently links to this clip, so the edit form
+// can preselect it in the "Link to FF&E item" dropdown
+function findFfeClipLink(id, clipId){
+  const row = (state.ffe[id]||[]).find(r=>r.clipId===clipId);
+  return row ? row.id : null;
+}
 function openNewClip(){
   const id = currentProjectId();
-  const ffeRows = state.ffe[id] || [];
-  const ffeOptions = ffeRows.map(r=>`<option value="${r.id}">${r.item}</option>`).join('');
   showModal(`
     <h3 class="font-display text-xl mb-4">Save web clip</h3>
-    <div class="space-y-3">
-      <input id="nc-title" placeholder="Title" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
-      <input id="nc-url" placeholder="Source URL" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
-      <input id="nc-image" placeholder="Image URL" oninput="updateClipPreview()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
-      <div>
-        <img id="nc-preview" alt="Preview" style="display:none" class="h-24 w-full object-cover rounded-lg" onload="document.getElementById('nc-preview').style.display='block'; document.getElementById('nc-preview-error').style.display='none';" onerror="document.getElementById('nc-preview').style.display='none'; document.getElementById('nc-preview-error').style.display='block';">
-        <p id="nc-preview-error" style="display:none; color:var(--ink-soft)" class="text-xs">Couldn't load image</p>
-      </div>
-      <label class="text-sm flex items-center gap-2"><input id="nc-client" type="checkbox" checked> Show on client moodboard</label>
-      <div>
-        <label class="text-xs block mb-1" style="color:var(--ink-soft)">Link to FF&amp;E item (optional)</label>
-        <select id="nc-ffe" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
-          <option value="">None</option>${ffeOptions}
-        </select>
-      </div>
-    </div>
+    <div class="space-y-3">${clipFormBodyHtml(id, null)}</div>
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
       <button onclick="createClip('${id}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
     </div>
   `);
+}
+function editClip(id, clipId){
+  const c = (state.clips[id]||[]).find(x=>x.id===clipId);
+  if(!c) return;
+  showModal(`
+    <h3 class="font-display text-xl mb-4">Edit clip</h3>
+    <div class="space-y-3">${clipFormBodyHtml(id, c)}</div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+      <button onclick="saveClip('${id}','${clipId}')" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+    </div>
+  `);
+}
+function deleteClip(id, clipId){
+  const rows = state.clips[id];
+  if(!rows) return;
+  const c = rows.find(x=>x.id===clipId);
+  if(!c) return;
+  if(!confirm(`Delete "${c.title}" from the moodboard and product library?`)) return;
+  state.clips[id] = rows.filter(x=>x.id!==clipId);
+  // clear any FF&E/approval rows still pointing at this clip so they don't reference a ghost thumbnail
+  (state.ffe[id]||[]).forEach(r=>{ if(r.clipId===clipId) r.clipId = null; });
+  (state.approvals[id]||[]).forEach(a=>{ if(a.clipId===clipId) a.clipId = null; });
+  save(state); logActivity(id, `Removed clip: ${c.title}`); toast('Clip removed');
+  renderClips(id); renderFfe(id); renderApprovals(id); renderActivity(id);
 }
 function updateClipPreview(){
   const input = document.getElementById('nc-image');
@@ -3000,23 +3254,56 @@ function updateClipPreview(){
   if(!url){ img.style.display = 'none'; img.removeAttribute('src'); return; }
   img.src = url;
 }
+// reads every clipFormBodyHtml field into a plain object shared by createClip/saveClip
+function readClipForm(){
+  return {
+    title: document.getElementById('nc-title').value.trim(),
+    url: document.getElementById('nc-url').value.trim() || '#',
+    image: document.getElementById('nc-image').value.trim(),
+    category: document.getElementById('nc-category').value.trim() || null,
+    supplier: document.getElementById('nc-supplier').value.trim() || null,
+    sku: document.getElementById('nc-sku').value.trim() || null,
+    dimensions: document.getElementById('nc-dimensions').value.trim() || null,
+    finish: document.getElementById('nc-finish').value.trim() || null,
+    cost: Number(document.getElementById('nc-cost').value) || null,
+    notes: document.getElementById('nc-notes').value.trim() || null,
+    forClient: document.getElementById('nc-client').checked
+  };
+}
 function createClip(id){
-  const title = document.getElementById('nc-title').value.trim();
-  const image = document.getElementById('nc-image').value.trim();
-  if(!title || !image){ toast('Title and image required'); return; }
+  const fields = readClipForm();
+  if(!fields.title || !fields.image){ toast('Title and image required'); return; }
   const clipId = uid('c');
-  state.clips[id].push({id:clipId, title, url:document.getElementById('nc-url').value.trim()||'#', image, forClient:document.getElementById('nc-client').checked});
+  state.clips[id].push(Object.assign({id:clipId, addedDate:todayISO()}, fields));
   const ffeEl = document.getElementById('nc-ffe');
   const targetFfeId = ffeEl ? ffeEl.value : '';
   if(targetFfeId){
     const ffeRow = (state.ffe[id]||[]).find(r=>r.id===targetFfeId);
     if(ffeRow) ffeRow.clipId = clipId;
   }
-  save(state); logActivity(id, `Saved clip: ${title}`); closeModal(); toast('Clip saved');
+  save(state); logActivity(id, `Saved clip: ${fields.title}`); closeModal(); toast('Clip saved to library');
   renderClips(id); renderActivity(id);
   if(targetFfeId){
     renderFfe(id); renderNextActions(id); renderProjectStats(id);
   }
+}
+function saveClip(id, clipId){
+  const rows = state.clips[id];
+  if(!rows) return;
+  const c = rows.find(x=>x.id===clipId);
+  if(!c) return;
+  const fields = readClipForm();
+  if(!fields.title || !fields.image){ toast('Title and image required'); return; }
+  Object.assign(c, fields);
+  const ffeEl = document.getElementById('nc-ffe');
+  const targetFfeId = ffeEl ? ffeEl.value : '';
+  (state.ffe[id]||[]).forEach(r=>{ if(r.clipId===clipId && r.id!==targetFfeId) r.clipId = null; });
+  if(targetFfeId){
+    const ffeRow = (state.ffe[id]||[]).find(r=>r.id===targetFfeId);
+    if(ffeRow) ffeRow.clipId = clipId;
+  }
+  save(state); logActivity(id, `Updated clip: ${fields.title}`); closeModal(); toast('Clip updated');
+  renderClips(id); renderActivity(id); renderFfe(id); renderNextActions(id); renderProjectStats(id);
 }
 
 // overdue badge for a pending approval: none <5d, amber 5-9d, red 10+d. Missing requestedDate (pre-existing seed data) = treat as just-requested, no badge.
@@ -4020,10 +4307,45 @@ function deleteBoardCard(projId, cardId){
 }
 
 /* ---------- job-site (trades) view ---------- */
+// Builder-facing half of the FF&E audience split (the client half is renderPortalFfe): items
+// opted into showToTrade, showing the installation-relevant fields a trade needs on site
+// (room/category/supplier/SKU/dimensions/qty/status) — deliberately never cost, mirroring the
+// same never-show-commercial-figures convention the client portal uses for its own audience.
+function renderTradesFfe(id){
+  const listEl = document.getElementById('trades-ffe-list');
+  if(!listEl) return;
+  const rows = (state.ffe[id]||[]).filter(r=>r.showToTrade);
+  if(!rows.length){
+    listEl.innerHTML = `<p class="text-sm opacity-60">Nothing shared with the site yet.</p>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(r=>{
+    const metaBits = [r.room, r.category].filter(Boolean);
+    const specBits = [r.supplier, r.sku ? `SKU ${r.sku}` : '', r.dimensions, r.finish].filter(Boolean);
+    let dueHtml = '';
+    if(r.expectedDate){
+      const overdue = r.status === 'Ordered' && new Date(r.expectedDate+'T00:00:00').getTime() < Date.now();
+      dueHtml = `<div class="text-xs mt-1" style="color:${overdue?'#f3a68c':'rgba(255,255,255,.6)'}">${overdue?'Overdue — due':'Due'} ${fmtShortDate(r.expectedDate)}</div>`;
+    }
+    return `
+    <div class="p-3 rounded-xl" style="background:rgba(255,255,255,.06)">
+      <div class="flex items-start justify-between gap-2">
+        <span class="font-medium">${r.item}</span>
+        <span class="tag tag-status flex-shrink-0" style="background:rgba(255,255,255,.12); color:#fff">${r.status}</span>
+      </div>
+      ${metaBits.length ? `<div class="text-xs mt-1 opacity-70">${metaBits.join(' · ')}</div>` : ''}
+      ${specBits.length ? `<div class="text-xs mt-1 opacity-70">${specBits.join(' · ')}</div>` : ''}
+      <div class="text-xs mt-1 opacity-70">Qty ${r.qty}</div>
+      ${dueHtml}
+    </div>
+  `;
+  }).join('');
+}
 function renderTrades(id){
   const p = state.projects.find(x=>x.id===id);
-  if(!p){ document.getElementById('trades-proj-name').textContent = 'Project not found'; document.getElementById('trades-list').innerHTML=''; return; }
+  if(!p){ document.getElementById('trades-proj-name').textContent = 'Project not found'; document.getElementById('trades-list').innerHTML=''; document.getElementById('trades-ffe-list').innerHTML=''; return; }
   document.getElementById('trades-proj-name').textContent = p.name;
+  renderTradesFfe(id);
   const tasks = state.tradesTasks[id] || [];
   const contacts = (state.contacts && state.contacts[id]) || [];
   document.getElementById('trades-list').innerHTML = tasks.length ? tasks.map(t=>{
