@@ -38,14 +38,17 @@
   .btn-ghost:hover{background:var(--paper-2);}
   ::-webkit-scrollbar{width:10px; height:10px;}
   ::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;}
-  .tab-active{border-bottom:2px solid var(--terracotta); color:var(--ink); font-weight:600;}
-  .tab-inactive{border-bottom:2px solid transparent; color:var(--ink-soft);}
+  .tab-strip-group{display:flex; align-items:center; flex-wrap:wrap; gap:.15rem; padding:.3rem; border-radius:12px; background:var(--paper-2);}
+  .tab-strip-group-label{font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-soft); opacity:.7; padding:0 .6rem;}
+  .tab-btn{padding:.45rem .8rem; border-radius:8px; font-size:.83rem; white-space:nowrap; transition:background .15s ease, color .15s ease;}
+  .tab-inactive{color:var(--ink-soft);}
+  .tab-inactive:hover{color:var(--ink); background:rgba(255,255,255,.6);}
+  .tab-active{background:#fff; color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(43,38,34,.08);}
   [data-route]{display:none;}
   .toast{position:fixed; bottom:1.25rem; right:1.25rem; z-index:50; background:var(--ink); color:#fff; padding:.65rem 1rem; border-radius:10px; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.18); opacity:0; transform:translateY(8px); transition:.2s;}
   .toast.show{opacity:1; transform:translateY(0);}
   .board-card.dragging{opacity:.4;}
   .board-col-dropzone.drag-over{background:var(--paper-2); outline:2px dashed var(--line);}
-  .tab-group-label:not(:first-child){ margin-left:.5rem; padding-left:1rem; border-left:1px solid var(--line); }
   input:not([type=checkbox]):not([type=radio]), textarea, select{ transition: border-color .15s ease, box-shadow .15s ease; }
   input:not([type=checkbox]):not([type=radio]):focus, textarea:focus, select:focus{ outline:none; border-color:var(--terracotta); box-shadow:0 0 0 3px var(--terracotta-soft); }
   button:focus-visible, a:focus-visible{ outline:2px solid var(--terracotta); outline-offset:2px; }
@@ -221,26 +224,32 @@
 
       <div id="next-actions" class="mb-2"></div>
 
-      <div class="relative mt-6 mb-6">
-        <div id="tab-strip" class="flex gap-6 flex-nowrap overflow-x-auto border-b" style="border-color:var(--line); padding-left:1.5rem; padding-right:1.5rem; scroll-padding-left:1.5rem; scroll-padding-right:1.5rem;">
-          <span class="tab-group-label flex-shrink-0 self-end pb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft); opacity:.6;">Plan</span>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="ffe" onclick="setTab('ffe')">FF&amp;E Schedule</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="milestones" onclick="setTab('milestones')">Milestones</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="board" onclick="setTab('board')">Board</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
-          <span class="tab-group-label flex-shrink-0 self-end pb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft); opacity:.6;">Collaborate</span>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="approvals" onclick="setTab('approvals')">Approvals</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="comments" onclick="setTab('comments')">Client Comments<span id="comment-unread-badge" class="hidden ml-1 inline-flex items-center justify-center text-xs font-semibold text-white rounded-full" style="background:var(--amber); min-width:1.25rem; height:1.25rem; padding:0 .35rem;"></span></button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="notes" onclick="setTab('notes')">Notes</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="clipper" onclick="setTab('clipper')">Web Clipper</button>
-          <span class="tab-group-label flex-shrink-0 self-end pb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft); opacity:.6;">Track</span>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="time" onclick="setTab('time')">Time Tracking</button>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="activity" onclick="setTab('activity')">Activity</button>
-          <span class="tab-group-label flex-shrink-0 self-end pb-3 text-xs font-semibold uppercase tracking-wide" style="color:var(--ink-soft); opacity:.6;">People</span>
-          <button class="tab-btn pb-3 text-sm flex-shrink-0 whitespace-nowrap" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
+      <div class="mt-6 mb-6">
+        <div id="tab-strip" class="flex flex-wrap gap-2">
+          <div class="tab-strip-group">
+            <span class="tab-strip-group-label">Plan</span>
+            <button class="tab-btn" data-tab="ffe" onclick="setTab('ffe')">FF&amp;E Schedule</button>
+            <button class="tab-btn" data-tab="milestones" onclick="setTab('milestones')">Milestones</button>
+            <button class="tab-btn" data-tab="board" onclick="setTab('board')">Board</button>
+            <button class="tab-btn" data-tab="tasks" onclick="setTab('tasks')">Site Tasks</button>
+          </div>
+          <div class="tab-strip-group">
+            <span class="tab-strip-group-label">Collaborate</span>
+            <button class="tab-btn" data-tab="approvals" onclick="setTab('approvals')">Approvals</button>
+            <button class="tab-btn" data-tab="comments" onclick="setTab('comments')">Client Comments<span id="comment-unread-badge" class="hidden ml-1 inline-flex items-center justify-center text-xs font-semibold text-white rounded-full" style="background:var(--amber); min-width:1.25rem; height:1.25rem; padding:0 .35rem;"></span></button>
+            <button class="tab-btn" data-tab="notes" onclick="setTab('notes')">Notes</button>
+            <button class="tab-btn" data-tab="clipper" onclick="setTab('clipper')">Web Clipper</button>
+          </div>
+          <div class="tab-strip-group">
+            <span class="tab-strip-group-label">Track</span>
+            <button class="tab-btn" data-tab="time" onclick="setTab('time')">Time Tracking</button>
+            <button class="tab-btn" data-tab="activity" onclick="setTab('activity')">Activity</button>
+          </div>
+          <div class="tab-strip-group">
+            <span class="tab-strip-group-label">People</span>
+            <button class="tab-btn" data-tab="contacts" onclick="setTab('contacts')">Contacts</button>
+          </div>
         </div>
-        <div class="pointer-events-none absolute left-0 top-0 bottom-2 w-6" style="background:linear-gradient(to right, var(--paper), transparent)"></div>
-        <div class="pointer-events-none absolute right-0 top-0 bottom-2 w-6" style="background:linear-gradient(to left, var(--paper), transparent)"></div>
       </div>
 
       <div id="tab-ffe" class="tab-pane">
