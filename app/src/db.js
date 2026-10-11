@@ -71,6 +71,25 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    id: '004_projects',
+    up() {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          client_name TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          budget REAL,
+          notes TEXT,
+          cover_image_path TEXT,
+          archived_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
   }
 ];
 
