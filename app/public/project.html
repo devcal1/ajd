@@ -15,7 +15,7 @@
     <nav class="flex items-center gap-5 text-sm">
       <a href="/" class="nav-link" style="color:var(--ink-soft)">Projects</a>
       <a href="/library.html" class="nav-link" style="color:var(--ink-soft)">Library</a>
-      <a href="/settings.html" title="Settings" aria-label="Settings" class="text-base leading-none" style="color:var(--ink-soft); opacity:.6">⚙</a>
+      <a href="/settings.html" title="Settings" aria-label="Settings" class="icon-link text-base leading-none">⚙</a>
       <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
     </nav>
   </header>
@@ -56,8 +56,12 @@
         </div>
         <div>
           <label class="text-xs font-semibold" style="color:var(--ink-soft)">Cover image</label>
-          <input id="f-cover" type="file" accept="image/*" class="w-full text-sm">
-          <label id="f-remove-cover-wrap" class="hidden flex items-center gap-2 text-xs mt-1" style="color:var(--ink-soft)">
+          <div class="flex items-center gap-2 mt-1">
+            <input id="f-cover" type="file" accept="image/*" class="sr-only">
+            <label for="f-cover" class="btn-ghost px-4 py-2 rounded-lg text-sm cursor-pointer inline-block">Upload image</label>
+            <span id="f-cover-name" class="text-xs" style="color:var(--ink-soft)">No file chosen</span>
+          </div>
+          <label id="f-remove-cover-wrap" class="hidden flex items-center gap-2 text-xs mt-2" style="color:var(--ink-soft)">
             <input type="checkbox" id="f-remove-cover"> Remove current cover image
           </label>
         </div>
@@ -78,9 +82,12 @@
           <label class="text-xs font-semibold" style="color:var(--ink-soft)">Room name *</label>
           <input id="f-room-name" required class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" placeholder="e.g. Living room">
         </div>
-        <div class="flex items-center justify-end gap-2 pt-2">
-          <button type="button" onclick="closeRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
-          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        <div class="flex items-center justify-between gap-2 pt-2">
+          <button type="button" id="room-delete-btn" onclick="deleteRoomFromModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm hidden" style="color:var(--red)">Delete room</button>
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" onclick="closeRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+            <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+          </div>
         </div>
       </form>
     </div>
@@ -152,14 +159,21 @@
         </div>
         <div>
           <label class="text-xs font-semibold" style="color:var(--ink-soft)">Image</label>
-          <input id="f-sel-image" type="file" accept="image/*" class="w-full text-sm">
-          <label id="f-sel-remove-image-wrap" class="hidden flex items-center gap-2 text-xs mt-1" style="color:var(--ink-soft)">
+          <div class="flex items-center gap-2 mt-1">
+            <input id="f-sel-image" type="file" accept="image/*" class="sr-only">
+            <label for="f-sel-image" class="btn-ghost px-4 py-2 rounded-lg text-sm cursor-pointer inline-block">Upload image</label>
+            <span id="f-sel-image-name" class="text-xs" style="color:var(--ink-soft)">No file chosen</span>
+          </div>
+          <label id="f-sel-remove-image-wrap" class="hidden flex items-center gap-2 text-xs mt-2" style="color:var(--ink-soft)">
             <input type="checkbox" id="f-sel-remove-image"> Remove current image
           </label>
         </div>
-        <div class="flex items-center justify-end gap-2 pt-2">
-          <button type="button" onclick="closeSelectionForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
-          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        <div class="flex items-center justify-between gap-2 pt-2">
+          <button type="button" id="sel-delete-btn" onclick="deleteSelectionFromModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm hidden" style="color:var(--red)">Delete</button>
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" onclick="closeSelectionForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+            <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+          </div>
         </div>
       </form>
     </div>
@@ -204,14 +218,18 @@
         <div class="card overflow-hidden mb-5">
           ${cover}
           <div class="p-5">
-            <div class="flex items-start justify-between flex-wrap gap-3">
-              <div>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
                 <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">${esc(project.name)}</h1>
                 <p class="text-sm" style="color:var(--ink-soft)">${esc(project.clientName) || 'No client set'}</p>
               </div>
-              <span class="tag tag-status">${esc(statusLabel(project.status))}${project.archived ? ' · Archived' : ''}</span>
+              <span class="tag tag-status shrink-0 mt-1.5">${esc(statusLabel(project.status))}${project.archived ? ' · Archived' : ''}</span>
             </div>
-            ${project.budget != null ? `<p class="text-sm mt-3" style="color:var(--ink-soft)">Budget: ${money(project.budget)}</p>` : ''}
+            <div class="flex flex-wrap gap-6 mt-4 mb-1">
+              ${project.budget != null ? `<div><p class="text-[11px] uppercase tracking-[.08em] font-medium" style="color:var(--ink-soft)">Budget</p><p class="font-display text-xl" style="color:var(--ink)">${money(project.budget)}</p></div>` : ''}
+              <div><p class="text-[11px] uppercase tracking-[.08em] font-medium" style="color:var(--ink-soft)">Committed</p><p class="font-display text-xl" style="color:var(--ink)">${money(totalSelectionCost())}</p></div>
+              <div><p class="text-[11px] uppercase tracking-[.08em] font-medium" style="color:var(--ink-soft)">Approved</p><p class="font-display text-xl" style="color:var(--ink)">${money(approvedCost())}</p></div>
+            </div>
             ${project.notes ? `<p class="text-sm mt-3 whitespace-pre-wrap" style="color:var(--ink)">${esc(project.notes)}</p>` : ''}
             <div class="flex items-center gap-2 flex-wrap mt-4">
               <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit</button>
@@ -225,7 +243,7 @@
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
           <div>
             <p class="font-display text-lg mb-1" style="color:var(--ink)">Rooms &amp; selections</p>
-            <p class="text-sm" style="color:var(--ink-soft)">${rooms.length} room${rooms.length === 1 ? '' : 's'} · ${totalSelectionCount()} selection${totalSelectionCount() === 1 ? '' : 's'} · ${money(totalSelectionCost())} total</p>
+            <p class="text-sm" style="color:var(--ink-soft)">${rooms.length} room${rooms.length === 1 ? '' : 's'} · ${totalSelectionCount()} selection${totalSelectionCount() === 1 ? '' : 's'}</p>
           </div>
           <button onclick="openRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">+ Add room</button>
         </div>
@@ -240,6 +258,10 @@
 
     function totalSelectionCost() {
       return rooms.reduce((sum, r) => sum + r.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
+    }
+
+    function approvedCost() {
+      return rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status === 'approved').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
     }
 
     function statusTagClass(s) {
@@ -257,15 +279,14 @@
         : `<p class="text-sm py-3" style="color:var(--ink-soft)">No selections yet.</p>`;
       return `
         <div class="card p-4">
-          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
-            <div class="flex items-center gap-2">
-              <p class="font-display text-base" style="color:var(--ink)">${esc(room.name)}</p>
-              <span class="text-xs" style="color:var(--ink-soft)">${room.selections.length} item${room.selections.length === 1 ? '' : 's'} · ${money(roomTotal)}</span>
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+              <p class="font-display text-xl" style="color:var(--ink)">${esc(room.name)}</p>
+              <span class="text-xs block sm:inline sm:ml-2" style="color:var(--ink-soft)">${room.selections.length} item${room.selections.length === 1 ? '' : 's'} · ${money(roomTotal)}</span>
             </div>
             <div class="flex items-center gap-2">
               <button onclick="openSelectionForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">+ Add selection</button>
               <button onclick="openRoomForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Rename</button>
-              <button onclick="removeRoom(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
             </div>
           </div>
           <div class="divide-y" style="border-color:var(--line)">${rows}</div>
@@ -275,8 +296,8 @@
     function selectionRowHtml(room, sel) {
       const thumb = sel.imagePath
         ? `<img src="${esc(sel.imagePath)}" class="sel-thumb" alt="">`
-        : `<div class="sel-thumb-placeholder"></div>`;
-      const meta = [sel.category, sel.supplier, sel.dimensions].filter(Boolean).join(' · ');
+        : `<div class="sel-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
+      const meta = [sel.category, sel.supplier, sel.dimensions, sel.finish].filter(Boolean).join(' · ');
       return `
         <div class="flex items-start gap-3 py-2.5">
           ${thumb}
@@ -286,13 +307,13 @@
               <span class="tag ${statusTagClass(sel.status)}">${statusLabelSel(sel.status)}</span>
             </div>
             <p class="text-xs truncate" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
+            ${sel.notes ? `<p class="text-xs italic truncate" style="color:var(--ink-soft)">${esc(sel.notes)}</p>` : ''}
             <div class="flex items-center justify-between flex-wrap gap-2 mt-1.5">
               <span class="text-sm" style="color:var(--ink-soft)">
                 ${sel.qty > 1 ? `${sel.qty} × ` : ''}${sel.cost != null ? money(sel.cost) : '—'}
               </span>
               <div class="flex items-center gap-1">
                 <button onclick="openSelectionForm(${room.id}, ${sel.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Edit</button>
-                <button onclick="removeSelection(${sel.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
               </div>
             </div>
           </div>
@@ -321,6 +342,7 @@
       document.getElementById('f-budget').value = project.budget == null ? '' : project.budget;
       document.getElementById('f-notes').value = project.notes || '';
       document.getElementById('f-cover').value = '';
+      document.getElementById('f-cover-name').textContent = 'No file chosen';
       document.getElementById('f-remove-cover-wrap').classList.toggle('hidden', !project.coverImagePath);
       document.getElementById('f-remove-cover').checked = false;
       document.getElementById('modal-backdrop').classList.remove('hidden');
@@ -379,6 +401,7 @@
       const form = document.getElementById('room-form');
       form.reset();
       document.getElementById('room-id').value = roomId || '';
+      document.getElementById('room-delete-btn').classList.toggle('hidden', !roomId);
       document.getElementById('room-modal-title').textContent = roomId ? 'Rename room' : 'Add room';
       if (roomId) {
         const room = rooms.find(r => r.id === roomId);
@@ -417,6 +440,13 @@
       refreshRooms();
     }
 
+    function deleteRoomFromModal() {
+      const roomId = document.getElementById('room-id').value;
+      if (!roomId) return;
+      closeRoomForm();
+      removeRoom(Number(roomId));
+    }
+
     async function openSelectionForm(roomId, selId) {
       const form = document.getElementById('selection-form');
       form.reset();
@@ -427,6 +457,8 @@
       document.getElementById('f-sel-status').value = 'proposed';
       document.getElementById('f-sel-qty').value = '1';
       document.getElementById('f-sel-remove-image-wrap').classList.add('hidden');
+      document.getElementById('f-sel-image-name').textContent = 'No file chosen';
+      document.getElementById('sel-delete-btn').classList.toggle('hidden', !selId);
       document.getElementById('selection-modal-title').textContent = selId ? 'Edit selection' : 'Add selection';
       if (selId) {
         const room = rooms.find(r => r.id === roomId);
@@ -519,6 +551,21 @@
       toast('Selection deleted');
       refreshRooms();
     }
+
+    function deleteSelectionFromModal() {
+      const selId = document.getElementById('sel-id').value;
+      if (!selId) return;
+      closeSelectionForm();
+      removeSelection(Number(selId));
+    }
+
+    document.getElementById('f-cover').addEventListener('change', (e) => {
+      document.getElementById('f-cover-name').textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
+    });
+
+    document.getElementById('f-sel-image').addEventListener('change', (e) => {
+      document.getElementById('f-sel-image-name').textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
+    });
 
     load();
   </script>

@@ -15,7 +15,7 @@
     <nav class="flex items-center gap-5 text-sm">
       <a href="/" class="nav-link nav-active" style="color:var(--ink)">Projects</a>
       <a href="/library.html" class="nav-link" style="color:var(--ink-soft)">Library</a>
-      <a href="/settings.html" title="Settings" aria-label="Settings" class="text-base leading-none" style="color:var(--ink-soft); opacity:.6">⚙</a>
+      <a href="/settings.html" title="Settings" aria-label="Settings" class="icon-link text-base leading-none">⚙</a>
       <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
     </nav>
   </header>
@@ -39,6 +39,10 @@
       <p class="font-display text-xl mb-1" style="color:var(--ink)">No projects yet</p>
       <p class="text-sm mb-4">Create your first project to start tracking it.</p>
       <button onclick="openForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ New project</button>
+    </div>
+    <div id="no-results" class="hidden text-center py-16" style="color:var(--ink-soft)">
+      <p class="font-display text-xl mb-1" style="color:var(--ink)">No matches</p>
+      <p class="text-sm">Nothing matches "<span id="no-results-term"></span>". Try another name or client.</p>
     </div>
   </main>
 
@@ -88,6 +92,7 @@
   <script src="/js/shared.js"></script>
   <script>
     let projects = [];
+    let allProjects = [];
 
     function statusLabel(s) {
       return { active: 'Active', 'on hold': 'On hold', complete: 'Complete' }[s] || s;
@@ -96,33 +101,42 @@
     async function load() {
       const q = document.getElementById('search').value.trim().toLowerCase();
       const includeArchived = document.getElementById('show-archived').checked;
-      const all = await api('/api/projects' + (includeArchived ? '?includeArchived=true' : ''));
+      allProjects = await api('/api/projects' + (includeArchived ? '?includeArchived=true' : ''));
       projects = q
-        ? all.filter(p => (p.name + ' ' + (p.clientName || '')).toLowerCase().includes(q))
-        : all;
-      render();
+        ? allProjects.filter(p => (p.name + ' ' + (p.clientName || '')).toLowerCase().includes(q))
+        : allProjects;
+      render(q);
     }
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    function render() {
+    function render(searchTerm) {
       const grid = document.getElementById('grid');
       const empty = document.getElementById('empty');
-      if (!projects.length) {
-        grid.innerHTML = '';
-        empty.classList.remove('hidden');
+      const noResults = document.getElementById('no-results');
+      if (projects.length) {
+        empty.classList.add('hidden');
+        noResults.classList.add('hidden');
+        grid.innerHTML = projects.map(cardHtml).join('');
         return;
       }
-      empty.classList.add('hidden');
-      grid.innerHTML = projects.map(cardHtml).join('');
+      grid.innerHTML = '';
+      if (allProjects.length === 0) {
+        empty.classList.remove('hidden');
+        noResults.classList.add('hidden');
+      } else {
+        empty.classList.add('hidden');
+        noResults.classList.remove('hidden');
+        document.getElementById('no-results-term').textContent = searchTerm || '';
+      }
     }
 
     function cardHtml(p) {
       const cover = p.coverImagePath
         ? `<img src="${esc(p.coverImagePath)}" class="lib-thumb" alt="">`
-        : `<div class="lib-thumb-placeholder">No image</div>`;
+        : `<div class="lib-thumb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
       return `
         <a href="/project.html?id=${p.id}" class="card card-hover overflow-hidden block">
           <div class="rounded-t-[20px] overflow-hidden relative">

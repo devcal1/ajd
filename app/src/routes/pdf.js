@@ -62,7 +62,17 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '28px', bottom: '28px', left: '28px', right: '28px' }
+      // Puppeteer's header/footer templates render inside the margin band --
+      // a zero margin leaves them no room and they're silently dropped, even
+      // with displayHeaderFooter true. document-print.html's @media print
+      // rule zeroes .doc-page's own padding (relying on this margin for all
+      // page whitespace, since Puppeteer's PDF output does not honor the
+      // page's @page CSS margin), so these need to be the full margin, not
+      // just footer clearance.
+      margin: { top: '16mm', bottom: '20mm', left: '14mm', right: '14mm' },
+      displayHeaderFooter: true,
+      headerTemplate: '<span></span>',
+      footerTemplate: '<div style="font-family:Inter,sans-serif;font-size:8px;color:#6d6459;width:100%;padding:0 16mm;display:flex;justify-content:space-between"><span>AJ Interiors &middot; ajinteriors.com.au</span><span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div>'
     });
     res.set({
       'Content-Type': 'application/pdf',
