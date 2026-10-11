@@ -19,6 +19,7 @@ const BACKUP_HOUR = (() => {
   const n = Number(process.env.BACKUP_HOUR);
   return Number.isInteger(n) && n >= 0 && n <= 23 ? n : 2;
 })();
+// Default 14 = two weeks of nightly backups.
 const RETENTION = Number(process.env.BACKUP_RETENTION) > 0
   ? Number(process.env.BACKUP_RETENTION)
   : 14;

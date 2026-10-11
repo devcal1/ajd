@@ -109,9 +109,13 @@ iteration loop for this app the way there was for the retired `ajd.html`
   401, `toast()`, `money()` formatter, `logout()`). One page per route:
   `index.html` (projects dashboard), `project.html?id=` (single project:
   details + room-by-room document editor), `library.html` (product
-  library), `login.html`, `document-print.html?id=` (print-styled, no nav
-  chrome — the page both the PDF route and a user's own browser "Preview
-  document" link render).
+  library), `settings.html` (backups — see Backups below), `login.html`,
+  `document-print.html?id=` (print-styled, no nav chrome — the page both the
+  PDF route and a user's own browser "Preview document" link render). Every
+  authenticated page's header carries a small, deliberately low-contrast
+  "⚙" link to `settings.html` (plain unicode gear, `opacity:.6`, no label,
+  no pill background unlike the other nav items) — settings is reachable
+  from anywhere but isn't presented as a primary section.
 - **Brand** (`app/public/css/brand.css`): ported directly from the retired
   `ajd.html`'s reskin — warm stone/greige grounds (`--paper`/`--paper-2`), a
   single dusty clay-taupe accent (`--terracotta*`), Libre Baskerville for
@@ -184,8 +188,8 @@ get swept up in it automatically — there's no Umbrel-specific API call here,
 just "write backups where the volume already is."
 
 - `GET /api/backups` lists existing backups (name + size); `POST
-  /api/backups/run` triggers one immediately (used by the dashboard's "Back
-  up now" button, mostly for manual/pre-change snapshots — the nightly
+  /api/backups/run` triggers one immediately (used by `settings.html`'s
+  "Back up now" button, mostly for manual/pre-change snapshots — the nightly
   schedule needs no interaction from the designer at all).
 - **Restore**: `POST /api/backups/:name/restore` (`restoreBackup()` in
   `backup.js`) overwrites the live DB + uploads with a chosen backup's copies,
@@ -193,12 +197,20 @@ just "write backups where the volume already is."
   SQLite file under the one `node:sqlite` connection every route shares
   while the process keeps running, so a restart is the mechanism, not a bug
   — both compose files' restart policies (`unless-stopped` / `on-failure`)
-  bring the container straight back up reading the restored files. The
-  dashboard's "Restore..." button lists backups in a modal, requires a
-  `confirm()` before calling the route (destructive — everything since that
-  backup is lost, and every session is invalidated, so re-login is expected
-  after a restore), then shows a "Restoring..." overlay that polls
-  `/login.html` until the app is back up and redirects there.
+  bring the container straight back up reading the restored files. The route
+  validates the backup exists first (`backupExists()`) and defers the actual
+  `db.close()`/file-swap to the response's `finish` event, not inline in the
+  handler — doing it inline raced `restoreBackup()`'s `db.close()` against
+  express-session's own post-response write to the sessions table.
+- **UI**: `app/public/settings.html` — not linked from the main nav, only
+  from a small low-contrast "⚙" link in each page's header (see Frontend
+  above). Shows last-backup status, a "Back up now" button, and every kept
+  backup listed by human-readable date (`parseBackupName()` turns the
+  ISO-ish directory name into e.g. "Sunday, 11 October 2026" + time), each
+  with its own "Restore" button — since backups are one-per-night, picking a
+  row is effectively picking a date. A `confirm()` warns what's lost before
+  calling the route, then a "Restoring..." overlay polls `/login.html`
+  until the app is back up and redirects there.
 - Backup/restore are the only destructive admin actions without a dedicated
   confirmation *page* (just a native `confirm()`) — deliberately minimal
   given this is a single-password, single-practice app with no one else to

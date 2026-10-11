@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Settings</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+</head>
+<body class="min-h-screen">
+  <header class="px-6 py-4 flex items-center justify-between" style="background:#fff; border-bottom:1px solid var(--line)">
+    <span class="font-display text-2xl" style="color:var(--ink)">AJD</span>
+    <nav class="flex items-center gap-5 text-sm">
+      <a href="/" class="nav-link" style="color:var(--ink-soft)">Projects</a>
+      <a href="/library.html" class="nav-link" style="color:var(--ink-soft)">Library</a>
+      <a href="/settings.html" title="Settings" aria-label="Settings" class="text-base leading-none" style="color:var(--ink)">⚙</a>
+      <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
+    </nav>
+  </header>
+  <main class="p-6 max-w-2xl mx-auto">
+    <a href="/" class="text-sm inline-block mb-4" style="color:var(--ink-soft)">&larr; All projects</a>
+    <h1 class="font-display text-2xl mb-1" style="color:var(--ink)">Settings</h1>
+    <p class="text-sm mb-6" style="color:var(--ink-soft)">Practice-wide options.</p>
+
+    <section class="card p-5">
+      <h2 class="font-display text-lg mb-1" style="color:var(--ink)">Backups</h2>
+      <p class="text-sm mb-4" style="color:var(--ink-soft)" id="backup-status">Checking backups...</p>
+      <button onclick="runBackupNow()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs mb-4">Back up now</button>
+
+      <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:var(--ink-soft)">Restore from a date</h3>
+      <p class="text-xs mb-3" style="color:var(--ink-soft)">
+        Pick a backup below to restore. This replaces everything currently in the app with that
+        backup's data and restarts the app — anything created or changed since then is lost, and
+        everyone will need to sign in again.
+      </p>
+      <div id="backup-list" class="space-y-2"></div>
+    </section>
+  </main>
+
+  <div id="restoring-overlay" class="modal-backdrop hidden">
+    <div class="card p-8 text-center max-w-xs">
+      <p class="font-display text-lg mb-2" style="color:var(--ink)">Restoring backup...</p>
+      <p class="text-sm" style="color:var(--ink-soft)">The app is restarting. This page will reload automatically — it can take up to a minute.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/shared.js"></script>
+  <script>
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function fmtBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // Backup dir names are a sanitized ISO timestamp, e.g. 2026-10-11T02-00-00-000Z.
+    function parseBackupName(name) {
+      const m = name.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})/);
+      if (!m) return { date: name, time: '' };
+      const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+      const date = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return { date, time };
+    }
+
+    async function loadBackups() {
+      const statusEl = document.getElementById('backup-status');
+      const listEl = document.getElementById('backup-list');
+      try {
+        const backups = await api('/api/backups');
+        if (!backups.length) {
+          statusEl.textContent = 'No backups yet — the first one runs automatically overnight.';
+          listEl.innerHTML = '<p class="text-sm" style="color:var(--ink-soft)">Nothing to restore yet.</p>';
+          return;
+        }
+        const latest = parseBackupName(backups[0].name);
+        statusEl.textContent = `Last backup: ${latest.date} at ${latest.time} · ${backups.length} kept (up to 2 weeks)`;
+        listEl.innerHTML = backups.map(b => {
+          const { date, time } = parseBackupName(b.name);
+          return `
+            <div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg" style="border:1px solid var(--line)">
+              <span class="text-sm">
+                <span style="color:var(--ink)">${esc(date)}</span>
+                <span style="color:var(--ink-soft)"> · ${esc(time)} · ${fmtBytes(b.bytes)}</span>
+              </span>
+              <button onclick="restoreBackup('${esc(b.name)}')" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Restore</button>
+            </div>`;
+        }).join('');
+      } catch (err) {
+        statusEl.textContent = 'Could not load backup status.';
+      }
+    }
+
+    async function runBackupNow() {
+      try {
+        await api('/api/backups/run', { method: 'POST' });
+        toast('Backup complete');
+        loadBackups();
+      } catch (err) {
+        toast(err.message || 'Backup failed');
+      }
+    }
+
+    async function restoreBackup(name) {
+      const { date, time } = parseBackupName(name);
+      if (!confirm(`Restore the backup from ${date} at ${time}? Everything since then will be lost, and the app will restart.`)) return;
+      try {
+        await api(`/api/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+      } catch (err) {
+        toast(err.message || 'Restore failed');
+        return;
+      }
+      document.getElementById('restoring-overlay').classList.remove('hidden');
+      waitForRestart();
+    }
+
+    function waitForRestart() {
+      const tryOnce = () => {
+        fetch('/login.html', { cache: 'no-store' })
+          .then(res => { if (res.ok) window.location.href = '/login.html'; else setTimeout(tryOnce, 1500); })
+          .catch(() => setTimeout(tryOnce, 1500));
+      };
+      setTimeout(tryOnce, 1500);
+    }
+
+    loadBackups();
+  </script>
+</body>
+</html>
