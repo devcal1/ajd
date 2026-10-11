@@ -1,0 +1,29 @@
+manifestVersion: 1.1
+id: ajd-design-manager
+category: files
+name: AJD Design Manager
+version: "1.0.0"
+tagline: Interior design practice management for AJ Interiors
+description: >-
+  Projects, a practice-wide product library, and room-by-room FF&E design
+  documents with one-click PDF export — a self-hosted practice manager for
+  an interior design practice, with every project photo, product spec and
+  client document kept on your own Umbrel instead of a third-party cloud.
+
+
+  Each project holds a room-by-room selection schedule: add a room, add
+  selections (with spec fields — category, supplier, SKU, dimensions,
+  finish, cost, quantity, status — optionally prefilled from the shared
+  Product Library), and export the whole document as a PDF to send a
+  client or print for a site visit.
+developer: AJ Interiors
+website: https://ajinteriors.com.au
+dependencies: []
+repo: https://github.com/devcal1/ajd
+support: https://github.com/devcal1/ajd/issues
+port: 3000
+deterministicPassword: true
+defaultUsername: ""
+defaultPassword: "$APP_SEED"
+submitter: devcal1
+submission: https://github.com/devcal1/ajd

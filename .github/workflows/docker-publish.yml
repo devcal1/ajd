@@ -1,0 +1,40 @@
+name: Publish Docker image
+
+# Builds app/Dockerfile and pushes it to GHCR whenever a version tag is
+# pushed, so umbrel-app-store/ajd-design-manager/docker-compose.yml's
+# `image:` reference stays a real, pullable image rather than aspirational.
+# Tag format: app-v1.2.3 (matches the "version" field in
+# umbrel-app-store/ajd-design-manager/umbrel-app.yml).
+on:
+  push:
+    tags:
+      - "app-v*.*.*"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive image tag from git tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: app
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ajd-design-manager:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/ajd-design-manager:latest

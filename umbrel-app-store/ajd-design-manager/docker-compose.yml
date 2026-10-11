@@ -1,0 +1,17 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: ${APP_ID}_web_1
+      APP_PORT: 3000
+
+  web:
+    image: ghcr.io/devcal1/ajd-design-manager:1.0.0
+    restart: on-failure
+    stop_grace_period: 1m
+    environment:
+      APP_PASSWORD: $APP_SEED
+      SESSION_SECRET: $APP_SEED
+    volumes:
+      - ${APP_DATA_DIR}/data:/app/data
