@@ -42,3 +42,8 @@ button:focus-visible, a:focus-visible{ outline:2px solid var(--terracotta); outl
 .modal-body{max-height:85vh; overflow-y:auto;}
 .lib-thumb{width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--paper-2);}
 .lib-thumb-placeholder{width:100%; aspect-ratio:4/3; background:var(--paper-2); display:flex; align-items:center; justify-content:center; color:var(--ink-soft); font-size:.8rem;}
+.sel-thumb{width:48px; height:48px; border-radius:10px; object-fit:cover; background:var(--paper-2); flex-shrink:0;}
+.sel-thumb-placeholder{width:48px; height:48px; border-radius:10px; background:var(--paper-2); flex-shrink:0;}
+.tag-proposed{background:var(--paper-2); color:var(--ink-soft);}
+.tag-approved{background:#e4e9da; color:var(--green);}
+.tag-rejected{background:#f1e2dc; color:var(--red);}

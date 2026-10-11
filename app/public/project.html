@@ -68,11 +68,109 @@
     </div>
   </div>
 
+  <div id="room-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeRoomForm()">
+    <div class="card modal-body p-6 w-full max-w-sm">
+      <h2 id="room-modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add room</h2>
+      <form id="room-form" class="space-y-3">
+        <input type="hidden" id="room-id">
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Room name *</label>
+          <input id="f-room-name" required class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)" placeholder="e.g. Living room">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="selection-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeSelectionForm()">
+    <div class="card modal-body p-6 w-full max-w-lg">
+      <h2 id="selection-modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add selection</h2>
+      <form id="selection-form" class="space-y-3">
+        <input type="hidden" id="sel-id">
+        <input type="hidden" id="sel-room-id">
+        <input type="hidden" id="sel-library-item-id">
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Import from library</label>
+          <input id="f-sel-import" list="library-items-datalist" placeholder="Search library to prefill..." class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          <datalist id="library-items-datalist"></datalist>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Title *</label>
+          <input id="f-sel-title" required class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Category</label>
+            <input id="f-sel-category" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Supplier</label>
+            <input id="f-sel-supplier" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">SKU</label>
+            <input id="f-sel-sku" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Dimensions</label>
+            <input id="f-sel-dimensions" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Finish</label>
+            <input id="f-sel-finish" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Status</label>
+            <select id="f-sel-status" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+              <option value="proposed">Proposed</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Cost (each)</label>
+            <input id="f-sel-cost" type="number" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Qty</label>
+            <input id="f-sel-qty" type="number" min="1" step="1" value="1" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Notes</label>
+          <textarea id="f-sel-notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)"></textarea>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Image</label>
+          <input id="f-sel-image" type="file" accept="image/*" class="w-full text-sm">
+          <label id="f-sel-remove-image-wrap" class="hidden flex items-center gap-2 text-xs mt-1" style="color:var(--ink-soft)">
+            <input type="checkbox" id="f-sel-remove-image"> Remove current image
+          </label>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeSelectionForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <script src="/js/shared.js"></script>
   <script>
     const id = new URLSearchParams(location.search).get('id');
     let project = null;
+    let rooms = [];
+    let libraryItems = [];
 
     function statusLabel(s) {
       return { active: 'Active', 'on hold': 'On hold', complete: 'Complete' }[s] || s;
@@ -89,6 +187,7 @@
       }
       try {
         project = await api(`/api/projects/${id}`);
+        await loadRooms();
       } catch (e) {
         document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">Project not found.</p>`;
         return;
@@ -120,11 +219,96 @@
             </div>
           </div>
         </div>
-        <div class="card p-5" style="color:var(--ink-soft)">
-          <p class="font-display text-lg mb-1" style="color:var(--ink)">Rooms &amp; selections</p>
-          <p class="text-sm">The room-by-room FF&amp;E selection schedule lands in Stage 4.</p>
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <p class="font-display text-lg mb-1" style="color:var(--ink)">Rooms &amp; selections</p>
+            <p class="text-sm" style="color:var(--ink-soft)">${rooms.length} room${rooms.length === 1 ? '' : 's'} · ${totalSelectionCount()} selection${totalSelectionCount() === 1 ? '' : 's'} · ${money(totalSelectionCost())} total</p>
+          </div>
+          <button onclick="openRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">+ Add room</button>
         </div>
+        <div id="rooms" class="space-y-4"></div>
       `;
+      renderRooms();
+    }
+
+    function totalSelectionCount() {
+      return rooms.reduce((n, r) => n + r.selections.length, 0);
+    }
+
+    function totalSelectionCost() {
+      return rooms.reduce((sum, r) => sum + r.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
+    }
+
+    function statusTagClass(s) {
+      return { proposed: 'tag-proposed', approved: 'tag-approved', rejected: 'tag-rejected' }[s] || 'tag-proposed';
+    }
+
+    function statusLabelSel(s) {
+      return { proposed: 'Proposed', approved: 'Approved', rejected: 'Rejected' }[s] || s;
+    }
+
+    function roomCardHtml(room) {
+      const roomTotal = room.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
+      const rows = room.selections.length
+        ? room.selections.map(sel => selectionRowHtml(room, sel)).join('')
+        : `<p class="text-sm py-3" style="color:var(--ink-soft)">No selections yet.</p>`;
+      return `
+        <div class="card p-4">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <p class="font-display text-base" style="color:var(--ink)">${esc(room.name)}</p>
+              <span class="text-xs" style="color:var(--ink-soft)">${room.selections.length} item${room.selections.length === 1 ? '' : 's'} · ${money(roomTotal)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="openSelectionForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">+ Add selection</button>
+              <button onclick="openRoomForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Rename</button>
+              <button onclick="removeRoom(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
+            </div>
+          </div>
+          <div class="divide-y" style="border-color:var(--line)">${rows}</div>
+        </div>`;
+    }
+
+    function selectionRowHtml(room, sel) {
+      const thumb = sel.imagePath
+        ? `<img src="${esc(sel.imagePath)}" class="sel-thumb" alt="">`
+        : `<div class="sel-thumb-placeholder"></div>`;
+      const meta = [sel.category, sel.supplier, sel.dimensions].filter(Boolean).join(' · ');
+      return `
+        <div class="flex items-start gap-3 py-2.5">
+          ${thumb}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <p class="font-semibold text-sm" style="color:var(--ink)">${esc(sel.title)}</p>
+              <span class="tag ${statusTagClass(sel.status)}">${statusLabelSel(sel.status)}</span>
+            </div>
+            <p class="text-xs truncate" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
+            <div class="flex items-center justify-between flex-wrap gap-2 mt-1.5">
+              <span class="text-sm" style="color:var(--ink-soft)">
+                ${sel.qty > 1 ? `${sel.qty} × ` : ''}${sel.cost != null ? money(sel.cost) : '—'}
+              </span>
+              <div class="flex items-center gap-1">
+                <button onclick="openSelectionForm(${room.id}, ${sel.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Edit</button>
+                <button onclick="removeSelection(${sel.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderRooms() {
+      const el = document.getElementById('rooms');
+      if (!el) return;
+      el.innerHTML = rooms.length
+        ? rooms.map(roomCardHtml).join('')
+        : `<div class="card p-5 text-center" style="color:var(--ink-soft)">
+             <p class="text-sm mb-3">No rooms yet. Add a room to start the FF&amp;E selection schedule.</p>
+             <button onclick="openRoomForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add room</button>
+           </div>`;
+    }
+
+    async function loadRooms() {
+      rooms = await api(`/api/projects/${id}/rooms`);
     }
 
     function openForm() {
@@ -181,6 +365,156 @@
       await api(`/api/projects/${id}`, { method: 'DELETE' });
       toast('Project deleted');
       window.location.href = '/';
+    }
+
+    async function refreshRooms() {
+      await loadRooms();
+      render();
+    }
+
+    function openRoomForm(roomId) {
+      const form = document.getElementById('room-form');
+      form.reset();
+      document.getElementById('room-id').value = roomId || '';
+      document.getElementById('room-modal-title').textContent = roomId ? 'Rename room' : 'Add room';
+      if (roomId) {
+        const room = rooms.find(r => r.id === roomId);
+        if (room) document.getElementById('f-room-name').value = room.name;
+      }
+      document.getElementById('room-modal-backdrop').classList.remove('hidden');
+    }
+
+    function closeRoomForm() {
+      document.getElementById('room-modal-backdrop').classList.add('hidden');
+    }
+
+    document.getElementById('room-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const roomId = document.getElementById('room-id').value;
+      const name = document.getElementById('f-room-name').value;
+      try {
+        if (roomId) {
+          await api(`/api/rooms/${roomId}`, { method: 'PUT', body: JSON.stringify({ name }) });
+        } else {
+          await api(`/api/projects/${id}/rooms`, { method: 'POST', body: JSON.stringify({ name }) });
+        }
+      } catch (err) {
+        toast(err.message || 'Save failed');
+        return;
+      }
+      closeRoomForm();
+      toast('Room saved');
+      refreshRooms();
+    });
+
+    async function removeRoom(roomId) {
+      if (!confirm('Delete this room and all of its selections? This cannot be undone.')) return;
+      await api(`/api/rooms/${roomId}`, { method: 'DELETE' });
+      toast('Room deleted');
+      refreshRooms();
+    }
+
+    async function openSelectionForm(roomId, selId) {
+      const form = document.getElementById('selection-form');
+      form.reset();
+      document.getElementById('sel-id').value = selId || '';
+      document.getElementById('sel-room-id').value = roomId;
+      document.getElementById('sel-library-item-id').value = '';
+      document.getElementById('f-sel-import').value = '';
+      document.getElementById('f-sel-status').value = 'proposed';
+      document.getElementById('f-sel-qty').value = '1';
+      document.getElementById('f-sel-remove-image-wrap').classList.add('hidden');
+      document.getElementById('selection-modal-title').textContent = selId ? 'Edit selection' : 'Add selection';
+      if (selId) {
+        const room = rooms.find(r => r.id === roomId);
+        const sel = room && room.selections.find(s => s.id === selId);
+        if (sel) {
+          document.getElementById('f-sel-title').value = sel.title || '';
+          document.getElementById('f-sel-category').value = sel.category || '';
+          document.getElementById('f-sel-supplier').value = sel.supplier || '';
+          document.getElementById('f-sel-sku').value = sel.sku || '';
+          document.getElementById('f-sel-dimensions').value = sel.dimensions || '';
+          document.getElementById('f-sel-finish').value = sel.finish || '';
+          document.getElementById('f-sel-status').value = sel.status || 'proposed';
+          document.getElementById('f-sel-cost').value = sel.cost == null ? '' : sel.cost;
+          document.getElementById('f-sel-qty').value = sel.qty || 1;
+          document.getElementById('f-sel-notes').value = sel.notes || '';
+          document.getElementById('sel-library-item-id').value = sel.libraryItemId || '';
+          if (sel.imagePath) document.getElementById('f-sel-remove-image-wrap').classList.remove('hidden');
+        }
+      }
+      document.getElementById('selection-modal-backdrop').classList.remove('hidden');
+      loadLibraryItemsForImport();
+    }
+
+    function closeSelectionForm() {
+      document.getElementById('selection-modal-backdrop').classList.add('hidden');
+    }
+
+    async function loadLibraryItemsForImport() {
+      try {
+        libraryItems = await api('/api/library');
+      } catch (e) {
+        libraryItems = [];
+      }
+      document.getElementById('library-items-datalist').innerHTML =
+        libraryItems.map(it => `<option value="${esc(it.title)}">`).join('');
+    }
+
+    document.getElementById('f-sel-import').addEventListener('change', (e) => {
+      const match = libraryItems.find(it => it.title === e.target.value);
+      if (!match) return;
+      document.getElementById('f-sel-title').value = match.title || '';
+      document.getElementById('f-sel-category').value = match.category || '';
+      document.getElementById('f-sel-supplier').value = match.supplier || '';
+      document.getElementById('f-sel-sku').value = match.sku || '';
+      document.getElementById('f-sel-dimensions').value = match.dimensions || '';
+      document.getElementById('f-sel-finish').value = match.finish || '';
+      document.getElementById('f-sel-cost').value = match.cost == null ? '' : match.cost;
+      document.getElementById('sel-library-item-id').value = match.id;
+    });
+
+    document.getElementById('selection-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const selId = document.getElementById('sel-id').value;
+      const roomId = document.getElementById('sel-room-id').value;
+      const fd = new FormData();
+      fd.append('title', document.getElementById('f-sel-title').value);
+      fd.append('category', document.getElementById('f-sel-category').value);
+      fd.append('supplier', document.getElementById('f-sel-supplier').value);
+      fd.append('sku', document.getElementById('f-sel-sku').value);
+      fd.append('dimensions', document.getElementById('f-sel-dimensions').value);
+      fd.append('finish', document.getElementById('f-sel-finish').value);
+      fd.append('status', document.getElementById('f-sel-status').value);
+      fd.append('cost', document.getElementById('f-sel-cost').value);
+      fd.append('qty', document.getElementById('f-sel-qty').value);
+      fd.append('notes', document.getElementById('f-sel-notes').value);
+      const libraryItemId = document.getElementById('sel-library-item-id').value;
+      if (libraryItemId) fd.append('libraryItemId', libraryItemId);
+      const file = document.getElementById('f-sel-image').files[0];
+      if (file) fd.append('image', file);
+      if (document.getElementById('f-sel-remove-image').checked) fd.append('removeImage', 'true');
+
+      const res = await fetch(selId ? `/api/selections/${selId}` : `/api/rooms/${roomId}/selections`, {
+        method: selId ? 'PUT' : 'POST',
+        body: fd
+      });
+      if (res.status === 401) { window.location.href = '/login.html'; return; }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || 'Save failed');
+        return;
+      }
+      closeSelectionForm();
+      toast('Selection saved');
+      refreshRooms();
+    });
+
+    async function removeSelection(selId) {
+      if (!confirm('Delete this selection? This cannot be undone.')) return;
+      await api(`/api/selections/${selId}`, { method: 'DELETE' });
+      toast('Selection deleted');
+      refreshRooms();
     }
 
     load();

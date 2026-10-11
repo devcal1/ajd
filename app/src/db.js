@@ -90,6 +90,41 @@ const MIGRATIONS = [
         );
       `);
     }
+  },
+  {
+    id: '005_document_rooms_selections',
+    up() {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS document_rooms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_rooms_project ON document_rooms(project_id);
+
+        CREATE TABLE IF NOT EXISTS document_selections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          room_id INTEGER NOT NULL REFERENCES document_rooms(id) ON DELETE CASCADE,
+          library_item_id INTEGER REFERENCES library_items(id) ON DELETE SET NULL,
+          title TEXT NOT NULL,
+          category TEXT,
+          supplier TEXT,
+          sku TEXT,
+          dimensions TEXT,
+          finish TEXT,
+          cost REAL,
+          qty INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'proposed',
+          notes TEXT,
+          image_path TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_selections_room ON document_selections(room_id);
+      `);
+    }
   }
 ];
 
