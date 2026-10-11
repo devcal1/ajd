@@ -214,7 +214,8 @@
             ${project.notes ? `<p class="text-sm mt-3 whitespace-pre-wrap" style="color:var(--ink)">${esc(project.notes)}</p>` : ''}
             <div class="flex items-center gap-2 flex-wrap mt-4">
               <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit</button>
-              <a href="/document-print.html?id=${id}" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Export PDF</a>
+              <a href="/document-print.html?id=${id}" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview document</a>
+              <a href="/api/projects/${id}/document.pdf" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Download PDF</a>
               <button onclick="toggleArchive()" class="btn-ghost px-4 py-2 rounded-lg text-sm">${project.archived ? 'Unarchive' : 'Archive'}</button>
               ${project.archived ? `<button onclick="remove()" class="btn-ghost px-4 py-2 rounded-lg text-sm" style="color:var(--red)">Delete</button>` : ''}
             </div>

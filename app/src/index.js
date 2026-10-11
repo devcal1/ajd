@@ -6,6 +6,7 @@ const authRoutes = require('./routes/auth');
 const libraryRoutes = require('./routes/library');
 const projectsRoutes = require('./routes/projects');
 const documentsRoutes = require('./routes/documents');
+const pdfRoutes = require('./routes/pdf');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 app.use(libraryRoutes);
 app.use(projectsRoutes);
 app.use(documentsRoutes);
+app.use(pdfRoutes);
 app.use(express.static(PUBLIC_DIR));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
