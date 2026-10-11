@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Product Library</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+</head>
+<body class="min-h-screen">
+  <header class="px-6 py-4 flex items-center justify-between" style="background:#fff; border-bottom:1px solid var(--line)">
+    <span class="font-display text-2xl" style="color:var(--ink)">AJD</span>
+    <nav class="flex items-center gap-5 text-sm">
+      <a href="/" class="nav-link" style="color:var(--ink-soft)">Projects</a>
+      <a href="/library.html" class="nav-link nav-active" style="color:var(--ink)">Library</a>
+      <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
+    </nav>
+  </header>
+  <main class="p-6 max-w-6xl mx-auto">
+    <div class="flex items-center justify-between flex-wrap gap-3 mb-5">
+      <div>
+        <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">Product Library</h1>
+        <p class="text-sm" style="color:var(--ink-soft)">Practice-wide products — searchable, reusable across every project.</p>
+      </div>
+      <button onclick="openForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add product</button>
+    </div>
+    <input id="search" type="text" placeholder="Search by title, category or supplier..."
+      class="w-full border rounded-lg px-3 py-2 text-sm mb-5" style="border-color:var(--line)">
+    <div id="grid" class="grid gap-4" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"></div>
+    <div id="empty" class="hidden text-center py-16" style="color:var(--ink-soft)">
+      <p class="font-display text-xl mb-1" style="color:var(--ink)">No products yet</p>
+      <p class="text-sm mb-4">Add your first product to start building the library.</p>
+      <button onclick="openForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add product</button>
+    </div>
+  </main>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeForm()">
+    <div class="card modal-body p-6 w-full max-w-lg">
+      <h2 id="modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add product</h2>
+      <form id="item-form" class="space-y-3">
+        <input type="hidden" id="item-id">
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Title *</label>
+          <input id="f-title" required class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Category</label>
+            <input id="f-category" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Supplier</label>
+            <input id="f-supplier" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">SKU</label>
+            <input id="f-sku" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Cost</label>
+            <input id="f-cost" type="number" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Dimensions</label>
+            <input id="f-dimensions" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:var(--ink-soft)">Finish</label>
+            <input id="f-finish" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Notes</label>
+          <textarea id="f-notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)"></textarea>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Image</label>
+          <input id="f-image" type="file" accept="image/*" class="w-full text-sm">
+          <label id="f-remove-image-wrap" class="hidden flex items-center gap-2 text-xs mt-1" style="color:var(--ink-soft)">
+            <input type="checkbox" id="f-remove-image"> Remove current image
+          </label>
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+          <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/shared.js"></script>
+  <script>
+    let items = [];
+
+    async function load() {
+      const q = document.getElementById('search').value.trim();
+      items = await api('/api/library' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+      render();
+    }
+
+    function render() {
+      const grid = document.getElementById('grid');
+      const empty = document.getElementById('empty');
+      if (!items.length) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+      grid.innerHTML = items.map(cardHtml).join('');
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function cardHtml(it) {
+      const thumb = it.imagePath
+        ? `<img src="${esc(it.imagePath)}" class="lib-thumb" alt="">`
+        : `<div class="lib-thumb-placeholder">No image</div>`;
+      const meta = [it.category, it.supplier].filter(Boolean).join(' · ');
+      return `
+        <div class="card card-hover overflow-hidden">
+          <div class="rounded-t-[20px] overflow-hidden">${thumb}</div>
+          <div class="p-3">
+            <p class="font-semibold text-sm truncate" style="color:var(--ink)" title="${esc(it.title)}">${esc(it.title)}</p>
+            <p class="text-xs truncate mb-2" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
+            ${it.cost != null ? `<p class="text-xs mb-2" style="color:var(--ink-soft)">${money(it.cost)}</p>` : ''}
+            <div class="flex items-center gap-2">
+              <button onclick="openForm(${it.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs flex-1">Edit</button>
+              <button onclick="removeItem(${it.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function openForm(id) {
+      const form = document.getElementById('item-form');
+      form.reset();
+      document.getElementById('f-remove-image-wrap').classList.add('hidden');
+      document.getElementById('item-id').value = id || '';
+      document.getElementById('modal-title').textContent = id ? 'Edit product' : 'Add product';
+      if (id) {
+        const it = items.find(i => i.id === id);
+        if (it) {
+          document.getElementById('f-title').value = it.title || '';
+          document.getElementById('f-category').value = it.category || '';
+          document.getElementById('f-supplier').value = it.supplier || '';
+          document.getElementById('f-sku').value = it.sku || '';
+          document.getElementById('f-cost').value = it.cost == null ? '' : it.cost;
+          document.getElementById('f-dimensions').value = it.dimensions || '';
+          document.getElementById('f-finish').value = it.finish || '';
+          document.getElementById('f-notes').value = it.notes || '';
+          if (it.imagePath) document.getElementById('f-remove-image-wrap').classList.remove('hidden');
+        }
+      }
+      document.getElementById('modal-backdrop').classList.remove('hidden');
+    }
+
+    function closeForm() {
+      document.getElementById('modal-backdrop').classList.add('hidden');
+    }
+
+    async function removeItem(id) {
+      if (!confirm('Delete this product? This cannot be undone.')) return;
+      await api(`/api/library/${id}`, { method: 'DELETE' });
+      toast('Product deleted');
+      load();
+    }
+
+    document.getElementById('item-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('item-id').value;
+      const fd = new FormData();
+      fd.append('title', document.getElementById('f-title').value);
+      fd.append('category', document.getElementById('f-category').value);
+      fd.append('supplier', document.getElementById('f-supplier').value);
+      fd.append('sku', document.getElementById('f-sku').value);
+      fd.append('cost', document.getElementById('f-cost').value);
+      fd.append('dimensions', document.getElementById('f-dimensions').value);
+      fd.append('finish', document.getElementById('f-finish').value);
+      fd.append('notes', document.getElementById('f-notes').value);
+      const file = document.getElementById('f-image').files[0];
+      if (file) fd.append('image', file);
+      if (document.getElementById('f-remove-image').checked) fd.append('removeImage', 'true');
+
+      const res = await fetch(id ? `/api/library/${id}` : '/api/library', {
+        method: id ? 'PUT' : 'POST',
+        body: fd
+      });
+      if (res.status === 401) { window.location.href = '/login.html'; return; }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast(body.error || 'Save failed');
+        return;
+      }
+      closeForm();
+      toast('Product saved');
+      load();
+    });
+
+    let searchTimer;
+    document.getElementById('search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(load, 200);
+    });
+
+    load();
+  </script>
+</body>
+</html>

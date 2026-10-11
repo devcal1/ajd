@@ -1,0 +1,13 @@
+# Local dev/test compose file only — NOT the Umbrel packaging (that lives in
+# umbrel-app-store/, added in Stage 6, and uses the app_proxy convention).
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:-changeme}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

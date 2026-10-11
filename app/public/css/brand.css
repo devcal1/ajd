@@ -1,0 +1,44 @@
+/* Palette + type drawn from the ajinteriors.com.au brand (ported from ajd.html):
+   warm stone/greige grounds, a single dusty clay accent, Libre Baskerville
+   standing in for their Baskerville display face, Inter for everything else. */
+:root{
+  --ink:#211e1a;
+  --ink-soft:#6d6459;
+  --paper:#f1efe8;
+  --paper-2:#dcd6c9;
+  --terracotta:#9c8b7e;
+  --terracotta-dark:#7d6d61;
+  --terracotta-soft:#eae4da;
+  --line:#d9d2c2;
+  --green:#75805f;
+  --amber:#b3894f;
+  --red:#a15b45;
+}
+*{font-family:'Inter',sans-serif;}
+.font-display{font-family:'Libre Baskerville', Georgia, serif;}
+body{background:var(--paper); color:var(--ink);}
+.card{background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:0 1px 2px rgba(33,30,26,.04);}
+.card-hover{transition:box-shadow .15s ease, transform .15s ease;}
+.card-hover:hover{box-shadow:0 10px 24px rgba(33,30,26,.10); transform:translateY(-1px);}
+.tag{display:inline-flex; align-items:center; gap:.25rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:999px;}
+.tag-status{background:var(--paper-2); color:var(--ink-soft);}
+.btn-primary,.btn-ghost{border-radius:999px !important;}
+.btn-primary{background:var(--terracotta); color:#fff;}
+.btn-primary:hover{background:var(--terracotta-dark);}
+.btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink);}
+.btn-ghost:hover{background:var(--paper-2);}
+::-webkit-scrollbar{width:10px; height:10px;}
+::-webkit-scrollbar-thumb{background:var(--line); border-radius:8px;}
+.toast{position:fixed; bottom:1.25rem; right:1.25rem; z-index:50; background:var(--ink); color:#fff; padding:.65rem 1rem; border-radius:10px; font-size:.85rem; box-shadow:0 8px 24px rgba(0,0,0,.18); opacity:0; transform:translateY(8px); transition:.2s;}
+.toast.show{opacity:1; transform:translateY(0);}
+input:not([type=checkbox]):not([type=radio]), textarea, select{ transition: border-color .15s ease, box-shadow .15s ease; }
+input:not([type=checkbox]):not([type=radio]):focus, textarea:focus, select:focus{ outline:none; border-color:var(--terracotta); box-shadow:0 0 0 3px var(--terracotta-soft); }
+button:focus-visible, a:focus-visible{ outline:2px solid var(--terracotta); outline-offset:2px; }
+.nav-link{position:relative; padding-bottom:2px; border-bottom:1px solid transparent;}
+.nav-link.nav-active{color:var(--ink) !important; border-bottom-color:var(--ink);}
+.wave-divider{display:block; width:100%; height:32px; margin-top:-1px;}
+.modal-backdrop{position:fixed; inset:0; background:rgba(33,30,26,.45); display:flex; align-items:center; justify-content:center; padding:1rem; z-index:100;}
+.modal-backdrop.hidden{display:none;}
+.modal-body{max-height:85vh; overflow-y:auto;}
+.lib-thumb{width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--paper-2);}
+.lib-thumb-placeholder{width:100%; aspect-ratio:4/3; background:var(--paper-2); display:flex; align-items:center; justify-content:center; color:var(--ink-soft); font-size:.8rem;}

@@ -1,0 +1,21 @@
+{
+  "name": "ajd-design-manager",
+  "version": "1.0.0",
+  "description": "AJD Design Manager — projects, product library, and client design-document PDFs",
+  "private": true,
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "multer": "^2.0.0"
+  }
+}

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Projects</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+</head>
+<body class="min-h-screen">
+  <header class="px-6 py-4 flex items-center justify-between" style="background:#fff; border-bottom:1px solid var(--line)">
+    <span class="font-display text-2xl" style="color:var(--ink)">AJD</span>
+    <nav class="flex items-center gap-5 text-sm">
+      <a href="/" class="nav-link nav-active" style="color:var(--ink)">Projects</a>
+      <a href="/library.html" class="nav-link" style="color:var(--ink-soft)">Library</a>
+      <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
+    </nav>
+  </header>
+  <main class="p-6">
+    <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">Projects</h1>
+    <p class="text-sm" style="color:var(--ink-soft)">Stage 2 scaffold — the Product Library is live. Projects dashboard lands in Stage 3.</p>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script src="/js/shared.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Sign in</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+</head>
+<body class="min-h-screen flex items-center justify-center">
+  <div class="card p-8 w-full max-w-sm">
+    <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">AJD</h1>
+    <p class="text-sm mb-6" style="color:var(--ink-soft)">Sign in to continue</p>
+    <form id="login-form" class="space-y-3">
+      <input id="password" type="password" placeholder="Password" autofocus
+        class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      <button type="submit" class="btn-primary w-full px-4 py-2 rounded-lg text-sm font-semibold">Sign in</button>
+    </form>
+    <p id="login-error" class="text-sm mt-3 hidden" style="color:var(--red)">Incorrect password</p>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="/js/shared.js"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('login-error');
+      errorEl.classList.add('hidden');
+      const password = document.getElementById('password').value;
+      const res = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        errorEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
