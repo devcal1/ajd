@@ -19,6 +19,10 @@
     </nav>
   </header>
   <main class="p-6 max-w-6xl mx-auto">
+    <div id="backup-strip" class="card p-3 mb-5 flex items-center justify-between flex-wrap gap-2 text-sm" style="color:var(--ink-soft)">
+      <span id="backup-status">Checking backups...</span>
+      <button onclick="runBackupNow()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs">Back up now</button>
+    </div>
     <div class="flex items-center justify-between flex-wrap gap-3 mb-5">
       <div>
         <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">Projects</h1>
@@ -168,6 +172,37 @@
       window.location.href = `/project.html?id=${created.id}`;
     });
 
+    function fmtBytes(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    async function loadBackupStatus() {
+      const el = document.getElementById('backup-status');
+      try {
+        const list = await api('/api/backups');
+        if (!list.length) {
+          el.textContent = 'No backups yet — the first scheduled one runs shortly after the app starts.';
+          return;
+        }
+        const latest = list[0];
+        el.textContent = `Last backup: ${latest.name.replace(/T.*/, '')} (${fmtBytes(latest.bytes)}) · ${list.length} kept`;
+      } catch (err) {
+        el.textContent = 'Could not load backup status.';
+      }
+    }
+
+    async function runBackupNow() {
+      try {
+        await api('/api/backups/run', { method: 'POST' });
+        toast('Backup complete');
+        loadBackupStatus();
+      } catch (err) {
+        toast(err.message || 'Backup failed');
+      }
+    }
+
     let searchTimer;
     document.getElementById('search').addEventListener('input', () => {
       clearTimeout(searchTimer);
@@ -176,6 +211,7 @@
     document.getElementById('show-archived').addEventListener('change', load);
 
     load();
+    loadBackupStatus();
   </script>
 </body>
 </html>

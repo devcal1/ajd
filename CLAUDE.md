@@ -76,6 +76,10 @@ iteration loop for this app the way there was for the retired `ajd.html`
     fields). `/api/projects/:projectId/rooms`,
     `/api/rooms/:id`, `/api/rooms/:roomId/selections`,
     `/api/selections/:id`.
+  - `backups.js` (`routes/backups.js`) — `GET /api/backups` (list),
+    `POST /api/backups/run` (trigger one immediately). The actual backup
+    logic lives in `app/src/backup.js`, not in a route file — see Backups
+    below.
   - `pdf.js` (`routes/pdf.js`) — `GET /api/projects/:id/document.pdf`:
     launches `puppeteer-core` against a local/system Chromium, navigates it
     (over loopback — `127.0.0.1:$PORT`, not the request's `Host` header, so
@@ -146,6 +150,40 @@ Single shared password for the whole practice, no per-user accounts.
   cookie, `SESSION_SECRET` env var (defaults to a dev placeholder — **set a
   real one outside local dev**, including in the Umbrel compose file where
   it's wired to the per-install `$APP_SEED`).
+
+## Backups
+
+`app/src/backup.js` runs a scheduled local backup — no external dependency,
+just a `setInterval` timer started from `index.js` (`startSchedule()`) after
+the HTTP server is listening. Each run (`runBackup()`):
+1. `VACUUM INTO`s a consistent point-in-time copy of the live SQLite DB (safe
+   under WAL mode and while the app is serving requests — unlike a raw file
+   copy, which could grab the DB mid-write) into a new timestamped directory.
+2. Copies the `uploads/` directory alongside it.
+3. Prunes old backups beyond `BACKUP_RETENTION` (default 14), oldest first.
+
+Backups land under `DATA_DIR/backups/<ISO-timestamp>/` — **inside** the same
+directory both `app/docker-compose.yml` and the Umbrel compose file already
+mount as a persistent volume (`${APP_DATA_DIR}/data` on Umbrel). That's the
+whole integration with Umbrel: as long as Umbrel's own backup feature is
+configured to include this app's data directory, these scheduled snapshots
+get swept up in it automatically — there's no Umbrel-specific API call here,
+just "write backups where the volume already is."
+
+- `BACKUP_INTERVAL_HOURS` (default 24) and `BACKUP_RETENTION` (default 14,
+  i.e. two weeks at the default daily interval) are env vars, set in both
+  compose files.
+- `GET /api/backups` lists existing backups (name + size); `POST
+  /api/backups/run` triggers one immediately. The dashboard
+  (`index.html`'s `#backup-strip`) shows the most recent backup's timestamp/
+  size/count and has a "Back up now" button wired to that route.
+- There's no restore tooling yet (deliberate — restoring is rare, higher-
+  stakes, and workflow-dependent; today it means stopping the container,
+  replacing `DATA_DIR`'s `ajd.db`/`uploads` with a chosen backup's copies,
+  and restarting). There's also no off-box/offsite copy — these are *local*
+  backups only, per the original request; pairing this with Umbrel's own
+  external-drive or remote backup target is what makes it offsite, not
+  anything in this app.
 
 ## Data model
 

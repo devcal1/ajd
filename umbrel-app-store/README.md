@@ -40,3 +40,14 @@ git push origin app-v1.0.0
 GHCR packages are private by default — after the first push, make
 `ajd-design-manager` public under the repo owner's GitHub Packages settings
 so Umbrel (which pulls anonymously) can fetch it.
+
+## Backups
+
+The app schedules its own local backups (DB snapshot + uploads, pruned to
+the last `BACKUP_RETENTION` copies — see [CLAUDE.md](../CLAUDE.md#backups))
+into `data/backups`, which is inside the `${APP_DATA_DIR}/data` volume this
+compose file already mounts. For those backups to survive beyond this one
+Umbrel install, point Umbrel's own backup feature (Settings → Backups, or an
+external-drive/remote target) at this app's data directory — the app writes
+backups in a place Umbrel can already see, but doesn't call any Umbrel
+backup API itself.

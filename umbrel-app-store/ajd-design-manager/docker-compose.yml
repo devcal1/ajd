@@ -13,5 +13,12 @@ services:
     environment:
       APP_PASSWORD: $APP_SEED
       SESSION_SECRET: $APP_SEED
+      # Scheduled local backups (app/src/backup.js): a VACUUM INTO snapshot of
+      # the DB + a copy of uploads, written under data/backups on a timer.
+      # That's inside the volume below, so Umbrel's own backup feature picks
+      # these up automatically as long as this app's data directory is
+      # included in what Umbrel backs up -- no separate wiring needed here.
+      BACKUP_INTERVAL_HOURS: "24"
+      BACKUP_RETENTION: "14"
     volumes:
       - ${APP_DATA_DIR}/data:/app/data
