@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Design Document</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+<style>
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff; }
+    .doc-page { box-shadow: none !important; border: none !important; }
+  }
+  .doc-page { max-width: 820px; margin: 0 auto; }
+  .doc-table th, .doc-table td { padding: .5rem .6rem; text-align: left; vertical-align: top; }
+  .doc-table th { font-size: .68rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); border-bottom: 1px solid var(--line); }
+  .doc-table td { font-size: .85rem; border-bottom: 1px solid var(--line); }
+  .doc-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background: var(--paper-2); }
+</style>
+</head>
+<body class="min-h-screen">
+  <div class="no-print px-6 py-4 flex items-center justify-between" style="background:#fff; border-bottom:1px solid var(--line)">
+    <a id="back-link" href="/" class="text-sm" style="color:var(--ink-soft)">&larr; Back to project</a>
+    <button onclick="window.print()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Print / Save as PDF</button>
+  </div>
+  <main class="p-3 sm:p-6">
+    <div id="content" class="doc-page card p-5 sm:p-8"></div>
+  </main>
+
+  <script src="/js/shared.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get('id');
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function statusLabel(s) {
+      return { active: 'Active', 'on hold': 'On hold', complete: 'Complete' }[s] || s;
+    }
+
+    function statusLabelSel(s) {
+      return { proposed: 'Proposed', approved: 'Approved', rejected: 'Rejected' }[s] || s;
+    }
+
+    function selectionRowHtml(sel) {
+      const thumb = sel.imagePath
+        ? `<img src="${esc(sel.imagePath)}" class="doc-thumb" alt="">`
+        : '';
+      const spec = [sel.dimensions, sel.finish].filter(Boolean).join(', ');
+      const lineTotal = sel.cost != null ? (sel.cost * (sel.qty || 1)) : null;
+      return `
+        <tr>
+          <td>${thumb}</td>
+          <td>
+            <p style="color:var(--ink)" class="font-semibold">${esc(sel.title)}</p>
+            <p style="color:var(--ink-soft)" class="text-xs">${esc([sel.category, sel.supplier, sel.sku].filter(Boolean).join(' · ')) || ''}</p>
+          </td>
+          <td style="color:var(--ink-soft)">${esc(spec) || '—'}</td>
+          <td style="color:var(--ink-soft)">${sel.qty || 1}</td>
+          <td style="color:var(--ink-soft)">${sel.cost != null ? money(sel.cost) : '—'}</td>
+          <td style="color:var(--ink)" class="font-semibold">${lineTotal != null ? money(lineTotal) : '—'}</td>
+          <td>${esc(statusLabelSel(sel.status))}</td>
+        </tr>`;
+    }
+
+    function roomSectionHtml(room) {
+      const roomTotal = room.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
+      const rows = room.selections.length
+        ? room.selections.map(selectionRowHtml).join('')
+        : `<tr><td colspan="7" style="color:var(--ink-soft)" class="text-sm py-3">No selections in this room.</td></tr>`;
+      return `
+        <div class="mb-8">
+          <div class="flex items-baseline justify-between mb-2">
+            <h2 class="font-display text-lg" style="color:var(--ink)">${esc(room.name)}</h2>
+            <span class="text-sm" style="color:var(--ink-soft)">${money(roomTotal)}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="doc-table w-full" style="min-width:560px">
+              <thead><tr><th></th><th>Item</th><th>Spec</th><th>Qty</th><th>Cost</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
+    async function load() {
+      if (!id) {
+        document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">No project specified.</p>`;
+        return;
+      }
+      document.getElementById('back-link').href = `/project.html?id=${id}`;
+      let project, rooms;
+      try {
+        project = await api(`/api/projects/${id}`);
+        rooms = await api(`/api/projects/${id}/rooms`);
+      } catch (e) {
+        document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">Project not found.</p>`;
+        return;
+      }
+      const grandTotal = rooms.reduce((sum, r) => sum + r.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
+      const today = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      document.getElementById('content').innerHTML = `
+        <div class="flex items-start justify-between mb-8 pb-6" style="border-bottom:1px solid var(--line)">
+          <div>
+            <p class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</p>
+            <p class="text-xs" style="color:var(--ink-soft)">FF&amp;E design document</p>
+          </div>
+          <p class="text-xs text-right" style="color:var(--ink-soft)">${esc(today)}</p>
+        </div>
+        <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">${esc(project.name)}</h1>
+        <p class="text-sm mb-6" style="color:var(--ink-soft)">${esc(project.clientName) || 'No client set'} · ${esc(statusLabel(project.status))}</p>
+        ${rooms.length ? rooms.map(roomSectionHtml).join('') : `<p class="text-sm" style="color:var(--ink-soft)">No rooms have been added to this document yet.</p>`}
+        <div class="flex items-center justify-between pt-4 mt-2" style="border-top:1px solid var(--line)">
+          <p class="font-display text-lg" style="color:var(--ink)">Document total</p>
+          <p class="font-display text-lg" style="color:var(--ink)">${money(grandTotal)}</p>
+        </div>
+      `;
+    }
+
+    load();
+  </script>
+</body>
+</html>
