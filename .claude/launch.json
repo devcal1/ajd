@@ -2,12 +2,6 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ajd-static",
-      "runtimeExecutable": "py",
-      "runtimeArgs": ["-3", "-m", "http.server", "8420"],
-      "port": 8420
-    },
-    {
       "name": "ajd-app",
       "runtimeExecutable": "node",
       "runtimeArgs": ["app/src/index.js"],
