@@ -21,7 +21,10 @@
   <main class="p-6 max-w-6xl mx-auto">
     <div id="backup-strip" class="card p-3 mb-5 flex items-center justify-between flex-wrap gap-2 text-sm" style="color:var(--ink-soft)">
       <span id="backup-status">Checking backups...</span>
-      <button onclick="runBackupNow()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs">Back up now</button>
+      <span class="flex items-center gap-2">
+        <button onclick="openRestoreModal()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs">Restore...</button>
+        <button onclick="runBackupNow()" class="btn-ghost px-3 py-1.5 rounded-lg text-xs">Back up now</button>
+      </span>
     </div>
     <div class="flex items-center justify-between flex-wrap gap-3 mb-5">
       <div>
@@ -84,6 +87,27 @@
           <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Create project</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="restore-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeRestoreModal()">
+    <div class="card modal-body p-6 w-full max-w-md">
+      <h2 class="font-display text-xl mb-1" style="color:var(--ink)">Restore a backup</h2>
+      <p class="text-xs mb-4" style="color:var(--ink-soft)">
+        This replaces everything currently in the app with that backup's data, then restarts the app.
+        Anything created or changed since that backup will be lost. Everyone will need to sign in again.
+      </p>
+      <div id="restore-list" class="space-y-2 mb-2"></div>
+      <div class="flex items-center justify-end pt-2">
+        <button type="button" onclick="closeRestoreModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="restoring-overlay" class="modal-backdrop hidden">
+    <div class="card p-8 text-center max-w-xs">
+      <p class="font-display text-lg mb-2" style="color:var(--ink)">Restoring backup...</p>
+      <p class="text-sm" style="color:var(--ink-soft)">The app is restarting. This page will reload automatically — it can take up to a minute.</p>
     </div>
   </div>
 
@@ -201,6 +225,59 @@
       } catch (err) {
         toast(err.message || 'Backup failed');
       }
+    }
+
+    function fmtBackupName(name) {
+      // Backup dir names are a sanitized ISO timestamp, e.g. 2026-10-11T02-00-00-000Z.
+      const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})/);
+      return m ? `${m[1]} ${m[2]}:${m[3]}` : name;
+    }
+
+    async function openRestoreModal() {
+      const list = document.getElementById('restore-list');
+      list.innerHTML = '<p class="text-sm" style="color:var(--ink-soft)">Loading...</p>';
+      document.getElementById('restore-modal-backdrop').classList.remove('hidden');
+      try {
+        const backups = await api('/api/backups');
+        if (!backups.length) {
+          list.innerHTML = '<p class="text-sm" style="color:var(--ink-soft)">No backups yet.</p>';
+          return;
+        }
+        list.innerHTML = backups.map(b => `
+          <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-lg" style="border:1px solid var(--line)">
+            <span class="text-sm">${esc(fmtBackupName(b.name))} <span style="color:var(--ink-soft)">(${fmtBytes(b.bytes)})</span></span>
+            <button onclick="restoreBackup('${esc(b.name)}')" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Restore</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = `<p class="text-sm" style="color:var(--red)">${esc(err.message)}</p>`;
+      }
+    }
+
+    function closeRestoreModal() {
+      document.getElementById('restore-modal-backdrop').classList.add('hidden');
+    }
+
+    async function restoreBackup(name) {
+      if (!confirm(`Restore the ${fmtBackupName(name)} backup? Everything since then will be lost, and the app will restart.`)) return;
+      try {
+        await api(`/api/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+      } catch (err) {
+        toast(err.message || 'Restore failed');
+        return;
+      }
+      closeRestoreModal();
+      document.getElementById('restoring-overlay').classList.remove('hidden');
+      waitForRestart();
+    }
+
+    function waitForRestart() {
+      const tryOnce = () => {
+        fetch('/login.html', { cache: 'no-store' })
+          .then(res => { if (res.ok) window.location.href = '/login.html'; else setTimeout(tryOnce, 1500); })
+          .catch(() => setTimeout(tryOnce, 1500));
+      };
+      setTimeout(tryOnce, 1500);
     }
 
     let searchTimer;

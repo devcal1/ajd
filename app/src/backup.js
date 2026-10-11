@@ -8,10 +8,17 @@ const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 // automatically covered by Umbrel's own host-level backup feature with no
 // extra wiring, as long as that directory is included in what gets backed up.
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+const DB_FILE = path.join(DATA_DIR, 'ajd.db');
 
-const INTERVAL_HOURS = Number(process.env.BACKUP_INTERVAL_HOURS) > 0
-  ? Number(process.env.BACKUP_INTERVAL_HOURS)
-  : 24;
+// Fixed local hour (0-23) to run the nightly backup -- not an interval timer,
+// so it actually lands at a predictable, low-traffic time every night rather
+// than drifting to whatever moment the container happened to last boot. Set
+// TZ in the environment (Dockerfile installs tzdata for this) so "night"
+// means the practice's own local time, not UTC.
+const BACKUP_HOUR = (() => {
+  const n = Number(process.env.BACKUP_HOUR);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : 2;
+})();
 const RETENTION = Number(process.env.BACKUP_RETENTION) > 0
   ? Number(process.env.BACKUP_RETENTION)
   : 14;
@@ -73,15 +80,80 @@ function safeRun() {
   }
 }
 
-// Simplest reliable "schedule" for a long-running single container: no cron
-// syntax to parse, just a fixed interval timer, with one run shortly after
-// boot so a freshly-deployed instance doesn't wait a full interval for its
-// first backup.
-function startSchedule() {
-  fs.mkdirSync(BACKUPS_DIR, { recursive: true });
-  setTimeout(safeRun, 60 * 1000);
-  setInterval(safeRun, INTERVAL_HOURS * 60 * 60 * 1000);
-  console.log(`[backup] scheduled every ${INTERVAL_HOURS}h, keeping last ${RETENTION}`);
+function msUntilNextRun() {
+  const next = new Date();
+  next.setHours(BACKUP_HOUR, 0, 0, 0);
+  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+  return next.getTime() - Date.now();
 }
 
-module.exports = { runBackup, listBackups, startSchedule, BACKUPS_DIR };
+// Recursive setTimeout (not setInterval) so each run recomputes "next
+// BACKUP_HOUR local time" from the real clock -- immune to drift and correct
+// across DST changes, unlike a fixed 24h interval anchored to boot time.
+function scheduleNext() {
+  const delay = msUntilNextRun();
+  setTimeout(() => {
+    safeRun();
+    scheduleNext();
+  }, delay);
+  console.log(`[backup] next nightly run in ${(delay / 3600000).toFixed(1)}h, at ${BACKUP_HOUR}:00 local time`);
+}
+
+// Zero designer interaction required: starts automatically with the app, no
+// setup step. A brand-new install also gets one quick backup shortly after
+// first boot so it isn't left with zero backups for up to 24h waiting for
+// the first nightly run.
+function startSchedule() {
+  fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+  if (listBackups().length === 0) {
+    setTimeout(safeRun, 60 * 1000);
+  }
+  scheduleNext();
+  console.log(`[backup] nightly at ${BACKUP_HOUR}:00 local time, keeping last ${RETENTION}`);
+}
+
+function assertSafeName(name) {
+  if (typeof name !== 'string' || !name || path.basename(name) !== name) {
+    throw new Error('Invalid backup name');
+  }
+  const dir = path.join(BACKUPS_DIR, name);
+  if (!fs.existsSync(path.join(dir, 'ajd.db'))) {
+    throw new Error('Backup not found: ' + name);
+  }
+  return dir;
+}
+
+function backupExists(name) {
+  try {
+    assertSafeName(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Restores a chosen backup over the live data, then exits the process so the
+// container's restart policy (restart: unless-stopped / on-failure in both
+// compose files) brings the app back up reading the restored files. There's
+// no safe way to hot-swap the DB file under the one open node:sqlite
+// connection every route shares, so a deliberate restart is the mechanism,
+// not a bug -- the API response tells the caller to expect it.
+function restoreBackup(name) {
+  const dir = assertSafeName(name);
+  db.close();
+  for (const suffix of ['', '-wal', '-shm']) {
+    const f = DB_FILE + suffix;
+    if (fs.existsSync(f)) fs.rmSync(f);
+  }
+  fs.copyFileSync(path.join(dir, 'ajd.db'), DB_FILE);
+  fs.rmSync(UPLOADS_DIR, { recursive: true, force: true });
+  const backupUploads = path.join(dir, 'uploads');
+  if (fs.existsSync(backupUploads)) {
+    fs.cpSync(backupUploads, UPLOADS_DIR, { recursive: true });
+  } else {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+  console.log(`[backup] restored ${name} -- exiting for a clean restart`);
+}
+
+module.exports = { runBackup, listBackups, restoreBackup, backupExists, startSchedule, BACKUPS_DIR };

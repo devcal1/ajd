@@ -43,11 +43,16 @@ so Umbrel (which pulls anonymously) can fetch it.
 
 ## Backups
 
-The app schedules its own local backups (DB snapshot + uploads, pruned to
-the last `BACKUP_RETENTION` copies — see [CLAUDE.md](../CLAUDE.md#backups))
-into `data/backups`, which is inside the `${APP_DATA_DIR}/data` volume this
-compose file already mounts. For those backups to survive beyond this one
-Umbrel install, point Umbrel's own backup feature (Settings → Backups, or an
-external-drive/remote target) at this app's data directory — the app writes
-backups in a place Umbrel can already see, but doesn't call any Umbrel
-backup API itself.
+The app backs itself up automatically, every night, with no setup step —
+nothing to schedule or remember. It snapshots the DB + uploads at
+`BACKUP_HOUR` local time (default 2am, set `TZ` to the practice's own
+timezone) and prunes to the last `BACKUP_RETENTION` copies (see
+[CLAUDE.md](../CLAUDE.md#backups)), into `data/backups`, which is inside the
+`${APP_DATA_DIR}/data` volume this compose file already mounts. A "Restore
+a backup" option lives on the app's own dashboard for rolling back to one of
+those snapshots.
+
+For those nightly snapshots to survive beyond this one Umbrel install, point
+Umbrel's own backup feature (Settings → Backups, or an external-drive/remote
+target) at this app's data directory — the app writes backups in a place
+Umbrel can already see, but doesn't call any Umbrel backup API itself.

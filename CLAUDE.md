@@ -153,14 +153,27 @@ Single shared password for the whole practice, no per-user accounts.
 
 ## Backups
 
-`app/src/backup.js` runs a scheduled local backup — no external dependency,
-just a `setInterval` timer started from `index.js` (`startSchedule()`) after
-the HTTP server is listening. Each run (`runBackup()`):
+`app/src/backup.js` runs fully automatically — no setup step, nothing for
+the designer to configure or remember. It starts itself from `index.js`
+(`startSchedule()`) right after the HTTP server comes up. Each run
+(`runBackup()`):
 1. `VACUUM INTO`s a consistent point-in-time copy of the live SQLite DB (safe
    under WAL mode and while the app is serving requests — unlike a raw file
    copy, which could grab the DB mid-write) into a new timestamped directory.
 2. Copies the `uploads/` directory alongside it.
 3. Prunes old backups beyond `BACKUP_RETENTION` (default 14), oldest first.
+
+**Scheduling**: nightly at a fixed local hour (`BACKUP_HOUR`, default 2am),
+not a 24h interval anchored to whenever the container last booted —
+`scheduleNext()` recomputes "ms until the next `BACKUP_HOUR`" with a
+recursive `setTimeout` each time, so it lands at the same predictable,
+low-traffic time every night and doesn't drift across restarts or DST. `TZ`
+(set in both compose files, default `Australia/Sydney` — change it if the
+practice is elsewhere) controls what "night" means; the Dockerfile installs
+`tzdata` so that env var actually takes effect in the container instead of
+silently staying on UTC. A brand-new install with zero backups also gets one
+quick backup ~60s after first boot, so it isn't left exposed for up to a day
+waiting for the first nightly run.
 
 Backups land under `DATA_DIR/backups/<ISO-timestamp>/` — **inside** the same
 directory both `app/docker-compose.yml` and the Umbrel compose file already
@@ -170,20 +183,29 @@ configured to include this app's data directory, these scheduled snapshots
 get swept up in it automatically — there's no Umbrel-specific API call here,
 just "write backups where the volume already is."
 
-- `BACKUP_INTERVAL_HOURS` (default 24) and `BACKUP_RETENTION` (default 14,
-  i.e. two weeks at the default daily interval) are env vars, set in both
-  compose files.
 - `GET /api/backups` lists existing backups (name + size); `POST
-  /api/backups/run` triggers one immediately. The dashboard
-  (`index.html`'s `#backup-strip`) shows the most recent backup's timestamp/
-  size/count and has a "Back up now" button wired to that route.
-- There's no restore tooling yet (deliberate — restoring is rare, higher-
-  stakes, and workflow-dependent; today it means stopping the container,
-  replacing `DATA_DIR`'s `ajd.db`/`uploads` with a chosen backup's copies,
-  and restarting). There's also no off-box/offsite copy — these are *local*
-  backups only, per the original request; pairing this with Umbrel's own
-  external-drive or remote backup target is what makes it offsite, not
-  anything in this app.
+  /api/backups/run` triggers one immediately (used by the dashboard's "Back
+  up now" button, mostly for manual/pre-change snapshots — the nightly
+  schedule needs no interaction from the designer at all).
+- **Restore**: `POST /api/backups/:name/restore` (`restoreBackup()` in
+  `backup.js`) overwrites the live DB + uploads with a chosen backup's copies,
+  then deliberately `process.exit(1)`s. There's no safe way to hot-swap the
+  SQLite file under the one `node:sqlite` connection every route shares
+  while the process keeps running, so a restart is the mechanism, not a bug
+  — both compose files' restart policies (`unless-stopped` / `on-failure`)
+  bring the container straight back up reading the restored files. The
+  dashboard's "Restore..." button lists backups in a modal, requires a
+  `confirm()` before calling the route (destructive — everything since that
+  backup is lost, and every session is invalidated, so re-login is expected
+  after a restore), then shows a "Restoring..." overlay that polls
+  `/login.html` until the app is back up and redirects there.
+- Backup/restore are the only destructive admin actions without a dedicated
+  confirmation *page* (just a native `confirm()`) — deliberately minimal
+  given this is a single-password, single-practice app with no one else to
+  protect against.
+- There's no off-box/offsite copy — these are *local* backups only, per the
+  original request; pairing this with Umbrel's own external-drive or remote
+  backup target is what makes it offsite, not anything in this app.
 
 ## Data model
 

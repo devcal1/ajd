@@ -9,8 +9,10 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-changeme}
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
       # Scheduled local backups (src/backup.js) -- snapshots land under
-      # ./data/backups, so they're already inside the volume below.
-      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      # ./data/backups, so they're already inside the volume below. BACKUP_HOUR
+      # is a 24h local-time hour (needs TZ set to mean anything but UTC).
+      TZ: ${TZ:-Australia/Sydney}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
       BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
     volumes:
       - ./data:/app/data
