@@ -34,6 +34,7 @@
     </div>
 
     <form id="clip-form" class="card p-5 space-y-3 hidden">
+      <a href="#" onclick="startOver(); return false" class="text-xs inline-block" style="color:var(--ink-soft); text-decoration:underline">&larr; Use a different page</a>
       <p id="dup-note" class="text-sm hidden" style="color:var(--ink-soft)"></p>
       <div>
         <label class="text-xs font-semibold" style="color:var(--ink-soft)">Title *</label>
@@ -82,17 +83,17 @@
       <div class="pt-2" style="border-top:1px solid var(--line)">
         <label class="text-xs font-semibold" style="color:var(--ink-soft)">Save to</label>
         <div class="grid grid-cols-2 gap-3 mt-1">
-          <select id="c-project" onchange="loadRooms()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          <select id="c-project" onchange="loadRooms().then(updateSaveLabel)" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
             <option value="">Product Library only</option>
           </select>
-          <select id="c-room" class="w-full border rounded-lg px-3 py-2 text-sm hidden" style="border-color:var(--line)"></select>
+          <select id="c-room" onchange="updateSaveLabel()" class="w-full border rounded-lg px-3 py-2 text-sm hidden" style="border-color:var(--line)"></select>
         </div>
         <p id="dest-note" class="text-xs mt-1" style="color:var(--ink-soft)">The product is always added to the library. Choose a project to also add it to a room's selections.</p>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
         <a href="/library.html" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Cancel</a>
-        <button id="save-btn" type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+        <button id="save-btn" type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save to library</button>
       </div>
     </form>
   </main>
@@ -133,6 +134,20 @@
       else s = s.replace(/,/g, '');
       const n = Number(s);
       return Number.isFinite(n) && n > 0 ? String(n) : '';
+    }
+
+    function startOver() {
+      $('clip-form').classList.add('hidden');
+      $('paste-card').classList.remove('hidden');
+      $('paste-url').focus();
+    }
+
+    // The button says where the product is going.
+    function updateSaveLabel() {
+      const room = $('c-room');
+      const inRoom = $('c-project').value && room.value;
+      const name = inRoom ? room.options[room.selectedIndex].text : '';
+      $('save-btn').textContent = inRoom ? `Save to library and ${name}` : 'Save to library';
     }
 
     function showForm(d) {
@@ -189,6 +204,7 @@
       if (pre && projects.some(p => String(p.id) === pre)) {
         $('c-project').value = pre;
         await loadRooms(query.get('room'));
+        updateSaveLabel();
       }
     }
 
@@ -228,7 +244,7 @@
       } catch (err) {
         toast(err.message || 'Save failed');
         btn.disabled = false;
-        btn.textContent = 'Save';
+        updateSaveLabel();
       }
     });
 

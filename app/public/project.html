@@ -69,11 +69,11 @@
           <label class="text-xs font-semibold" style="color:var(--ink-soft)">Document display (preview &amp; PDF)</label>
           <div class="grid grid-cols-2 gap-x-3 gap-y-1 mt-1 text-sm" style="color:var(--ink)">
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-costs"> Show costs and totals</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-images"> Show images</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-approval"> Show approval column</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-details"> Show category / supplier / SKU</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-supplier"> Show supplier column</label>
-            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-links"> Show product links</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-images"> Show photos</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-approval"> Show approval status</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-details"> Category &amp; SKU under each item</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-supplier"> Supplier column</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-links"> Link to product pages</label>
           </div>
           <div class="grid grid-cols-2 gap-3 mt-2">
             <div>
@@ -81,7 +81,7 @@
               <input id="f-pdf-header" maxlength="120" placeholder="FF&amp;E design document" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
             </div>
             <div>
-              <label class="text-xs font-semibold" style="color:var(--ink-soft)">Group by</label>
+              <label class="text-xs font-semibold" style="color:var(--ink-soft)">Default grouping</label>
               <select id="f-pdf-grouping" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
                 <option value="room">Room</option>
                 <option value="supplier">Supplier</option>
@@ -264,17 +264,16 @@
               <div><p class="text-[11px] uppercase tracking-[.08em] font-medium" style="color:var(--ink-soft)">Approved</p><p class="font-display text-xl" style="color:var(--ink)">${money(approvedCost())}</p></div>
             </div>
             ${project.notes ? `<p class="text-sm mt-3 whitespace-pre-wrap" style="color:var(--ink)">${esc(project.notes)}</p>` : ''}
-            <div class="flex items-center gap-2 flex-wrap mt-4">
-              <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit</button>
-              <a href="/document-print.html?id=${id}" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview document</a>
-              <a href="/api/projects/${id}/document.pdf" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Download PDF</a>
-              <a href="/document-print.html?id=${id}&group=supplier" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block" title="Same document grouped by supplier, for ordering">Preview by supplier</a>
-              <a href="/api/projects/${id}/document.pdf?group=supplier" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">PDF by supplier</a>
-              <button onclick="toggleArchive()" class="btn-ghost px-4 py-2 rounded-lg text-sm">${project.archived ? 'Unarchive' : 'Archive'}</button>
-              ${project.archived ? `<button onclick="remove()" class="btn-ghost px-4 py-2 rounded-lg text-sm" style="color:var(--red)">Delete</button>` : ''}
+            <div class="flex items-center gap-3 flex-wrap mt-4">
+              <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit project</button>
+              <span class="ml-auto flex items-center gap-4">
+                <button onclick="toggleArchive()" class="text-sm underline" style="color:var(--ink-soft)">${project.archived ? 'Unarchive' : 'Archive'}</button>
+                ${project.archived ? `<button onclick="remove()" class="text-sm underline" style="color:var(--red)">Delete project</button>` : ''}
+              </span>
             </div>
           </div>
         </div>
+        <div id="doc-panel" class="mb-6"></div>
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
           <div>
             <p class="font-display text-lg mb-1" style="color:var(--ink)">Rooms &amp; selections</p>
@@ -283,10 +282,9 @@
           <button onclick="openRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">+ Add room</button>
         </div>
         <div id="rooms" class="space-y-4"></div>
-        <div id="revisions" class="mt-8"></div>
       `;
       renderRooms();
-      renderRevisions();
+      renderDocPanel();
     }
 
     function totalSelectionCount() {
@@ -321,7 +319,7 @@
               <p class="font-display text-xl" style="color:var(--ink)">${esc(room.name)}</p>
               <span class="text-xs block sm:inline sm:ml-2" style="color:var(--ink-soft)">${room.selections.length} item${room.selections.length === 1 ? '' : 's'} · ${money(roomTotal)}</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <button onclick="openSelectionForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">+ Add selection</button>
               <a href="/clip.html?project=${id}&room=${room.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">Clip from web</a>
               <button onclick="openRoomForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Rename</button>
@@ -343,8 +341,8 @@
             <div class="flex items-center gap-2 flex-wrap">
               <p class="font-semibold text-sm" style="color:var(--ink)">${esc(sel.title)}</p>
               <span class="tag ${statusTagClass(sel.status)}">${statusLabelSel(sel.status)}</span>
-              ${sel.libraryStatus === 'changed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag" style="cursor:pointer" title="The library item has changed since this was added">Library updated</button>` : ''}
-              ${sel.libraryStatus === 'removed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag" style="cursor:pointer" title="The library item was deleted">Library item deleted</button>` : ''}
+              ${sel.libraryStatus === 'changed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag" style="cursor:pointer; background:var(--terracotta-soft); color:var(--terracotta-dark); border:1px solid var(--terracotta)" title="The library item has been edited since this was added. Click to review.">&#8635; Library changed</button>` : ''}
+              ${sel.libraryStatus === 'removed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag tag-rejected" style="cursor:pointer" title="The library item this came from was deleted">Library item deleted</button>` : ''}
             </div>
             <p class="text-xs truncate" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
             ${sel.notes ? `<p class="text-xs italic truncate" style="color:var(--ink-soft)">${esc(sel.notes)}</p>` : ''}
@@ -381,43 +379,113 @@
       return new Date(s.replace(' ', 'T') + 'Z').toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     }
 
-    function renderRevisions() {
-      const el = document.getElementById('revisions');
+    // 'room' | 'supplier': which grouping the panel's Preview / PDF / revision links use.
+    let docGroup = null;
+
+    function docLinks(revId) {
+      const g = `group=${docGroup}`;
+      const rev = revId ? `&revision=${revId}` : '';
+      return {
+        preview: `/document-print.html?id=${id}&${g}${rev}`,
+        pdf: `/api/projects/${id}/document.pdf?${g}${rev}`
+      };
+    }
+
+    function setDocGroup(g) {
+      docGroup = g;
+      renderDocPanel();
+    }
+
+    function revisionLabelFor(seq) {
+      return seq <= 26 ? 'Rev ' + String.fromCharCode(64 + seq) : 'Rev ' + seq;
+    }
+
+    function renderDocPanel() {
+      const el = document.getElementById('doc-panel');
       if (!el) return;
-      const rows = revisions.map(r => `
-        <div class="flex items-start justify-between flex-wrap gap-2 py-2.5">
+      if (!docGroup) docGroup = (project.pdfSettings && project.pdfSettings.grouping) || 'room';
+      const live = docLinks();
+      const latest = revisions[0];
+      const caption = `${rooms.length} room${rooms.length === 1 ? '' : 's'} · ${totalSelectionCount()} selection${totalSelectionCount() === 1 ? '' : 's'} · ${latest ? `last issued ${esc(latest.label)}, ${esc(fmtIssued(latest.createdAt).replace(/, \d+:\d+.*$/, ''))}` : 'not yet issued'}`;
+      const rows = revisions.map(r => {
+        const links = docLinks(r.id);
+        const pick = fn => `this.closest('details').removeAttribute('open'); ${fn}`;
+        return `
+        <div class="flex items-center justify-between flex-wrap gap-2 py-2.5">
           <div class="min-w-0">
             <p class="text-sm font-semibold" style="color:var(--ink)">${esc(r.label)} <span class="font-normal" style="color:var(--ink-soft)">· ${esc(fmtIssued(r.createdAt))}</span></p>
             <p class="text-xs" style="color:var(--ink-soft)">${r.roomCount} room${r.roomCount === 1 ? '' : 's'} · ${r.selectionCount} selection${r.selectionCount === 1 ? '' : 's'}${r.note ? ' · ' + esc(r.note) : ''}</p>
           </div>
-          <div class="flex items-center gap-1 flex-wrap">
-            <a href="/document-print.html?id=${id}&revision=${r.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">View</a>
-            <a href="/api/projects/${id}/document.pdf?revision=${r.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">PDF</a>
-            <button onclick="openCompare(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Compare</button>
-            <button onclick="restoreRevision(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Restore</button>
-            <button onclick="deleteRevision(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
+          <div class="flex items-center gap-1.5">
+            <a href="${links.preview}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">View</a>
+            <a href="${links.pdf}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">PDF</a>
+            <details class="menu">
+              <summary class="btn-ghost px-3 py-1 rounded-lg text-xs" aria-label="More actions for ${esc(r.label)}">More &#9662;</summary>
+              <div class="menu-list">
+                <button type="button" onclick="${pick(`openCompare(${r.id})`)}">Compare with current</button>
+                <button type="button" onclick="${pick(`restoreRevision(${r.id})`)}">Restore this revision&hellip;</button>
+                <button type="button" onclick="${pick(`deleteRevision(${r.id})`)}" style="color:var(--red)">Delete revision&hellip;</button>
+              </div>
+            </details>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       el.innerHTML = `
-        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
-          <div>
-            <p class="font-display text-lg mb-1" style="color:var(--ink)">Issued revisions</p>
-            <p class="text-sm" style="color:var(--ink-soft)">Frozen copies of the document (e.g. what the client received), including photos.</p>
+        <div class="card p-5">
+          <div class="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <p class="font-display text-lg" style="color:var(--ink)">Client document</p>
+              <p class="text-xs mt-0.5" style="color:var(--ink-soft)">${caption}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="seg" role="group" aria-label="Group document by">
+                <button type="button" onclick="setDocGroup('room')" aria-pressed="${docGroup === 'room'}">By room</button>
+                <button type="button" onclick="setDocGroup('supplier')" aria-pressed="${docGroup === 'supplier'}" title="Group by supplier, for ordering">By supplier</button>
+              </div>
+              <a href="${live.preview}" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview</a>
+              <a href="${live.pdf}" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold inline-block">Download PDF</a>
+            </div>
           </div>
-          <button onclick="issueRevision()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Issue new revision</button>
-        </div>
-        <div class="card p-4">
-          ${rows ? `<div class="divide-y" style="border-color:var(--line)">${rows}</div>` : `<p class="text-sm" style="color:var(--ink-soft)">No revisions issued yet.</p>`}
+          <div class="mt-4 pt-4" style="border-top:1px solid var(--line)">
+            <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
+              <div>
+                <p class="text-sm font-semibold" style="color:var(--ink)">Issued revisions</p>
+                <p class="text-xs" style="color:var(--ink-soft)">Frozen copies of what was sent (rooms, prices and photos), so you can always view or restore them.</p>
+              </div>
+              <button onclick="openIssueModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Issue revision</button>
+            </div>
+            ${rows ? `<div class="divide-y" style="border-color:var(--line)">${rows}</div>` : `<p class="text-sm py-2" style="color:var(--ink-soft)">None issued yet.</p>`}
+          </div>
         </div>`;
     }
 
-    async function issueRevision() {
-      const note = prompt('Issue the document as it stands now as a new revision.\n\nOptional note (e.g. "Issued to client for approval"):', '');
-      if (note === null) return;
+    // close any open "More" menu when clicking elsewhere
+    document.addEventListener('click', e => {
+      document.querySelectorAll('details.menu[open]').forEach(d => { if (!d.contains(e.target)) d.removeAttribute('open'); });
+    });
+
+    function openIssueModal() {
+      const next = Math.max(0, ...revisions.map(r => r.seq || 0)) + 1;
+      const label = revisionLabelFor(next);
+      document.getElementById('sync-title').textContent = `Issue ${label}`;
+      document.getElementById('sync-body').innerHTML = `
+        <p class="mb-3" style="color:var(--ink-soft)">This freezes the document exactly as it is now (rooms, selections, prices and photos) as <strong style="color:var(--ink)">${esc(label)}</strong>. Later edits won't change it, and you can view, export, compare or restore it at any time.</p>
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Note (optional)</label>
+        <input id="issue-note" maxlength="200" placeholder="e.g. Issued to client for approval" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">`;
+      document.getElementById('sync-actions').innerHTML = `
+        <button type="button" onclick="closeSyncModal()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
+        <button type="button" onclick="confirmIssue()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Issue ${esc(label)}</button>`;
+      document.getElementById('sync-modal-backdrop').classList.remove('hidden');
+      document.getElementById('issue-note').focus();
+    }
+
+    async function confirmIssue() {
+      const note = document.getElementById('issue-note').value;
       try {
         const rev = await api(`/api/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify({ note }) });
         toast(rev.label + ' issued');
       } catch (err) { toast(err.message || 'Could not issue revision'); return; }
+      closeSyncModal();
       refreshRooms();
     }
 
@@ -520,6 +588,7 @@
     });
 
     async function toggleArchive() {
+      if (!project.archived && !confirm(`Archive "${project.name}"?\n\nIt will be hidden from the dashboard. You can show archived projects there and unarchive it at any time.`)) return;
       await api(`/api/projects/${id}/archive`, {
         method: 'POST',
         body: JSON.stringify({ archive: !project.archived })

@@ -391,6 +391,15 @@ code, not decisions.
 
 ## Working conventions for this project
 
+- **Project page layout** (after the 2026-10-12 Fable review): the header card has only Edit project +
+  low-key Archive/Delete links. Output lives in a "Client document" panel (`renderDocPanel()` in
+  `project.html`): a By room / By supplier switch (`docGroup`, initial value = the project's default
+  grouping) drives the Preview and Download PDF links and every revision's View/PDF links; issued
+  revisions sit in the same panel, with Compare/Restore/Delete in a native `<details class="menu">`
+  overflow menu and "Issue revision" in a dialog that names the next label. On `document-print.html`
+  all tables share one fixed column layout (`<colgroup>`, photo column decided per document, not per
+  room) and a revision shows its label + issue date beside the project title.
+
 - Links inside the app open in the same tab (no `target="_blank"`) — the owner asked for this.
 
 - No standing iteration loop is active for `app/` the way `ITERATE.md`

@@ -22,7 +22,20 @@ body{background:var(--paper); color:var(--ink);}
 .card-hover:hover{box-shadow:0 10px 24px rgba(33,30,26,.10); transform:translateY(-1px);}
 .tag{display:inline-flex; align-items:center; gap:.25rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:999px;}
 .tag-status{background:var(--paper-2); color:var(--ink-soft);}
-.btn-primary,.btn-ghost{border-radius:999px !important;}
+.btn-primary,.btn-ghost{border-radius:999px !important; white-space:nowrap;}
+/* segmented two-way switch (project page: document grouping) */
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:999px; padding:2px; background:#fff;}
+.seg button{padding:.3rem .85rem; font-size:.8rem; border-radius:999px; color:var(--ink-soft); white-space:nowrap;}
+.seg button[aria-pressed="true"]{background:var(--terracotta); color:#fff; font-weight:600;}
+/* native <details> overflow menu */
+.menu{position:relative; display:inline-block;}
+.menu > summary{list-style:none; cursor:pointer;}
+.menu > summary::-webkit-details-marker{display:none;}
+.menu-list{position:absolute; right:0; top:calc(100% + 4px); min-width:12rem; z-index:20; background:#fff; border:1px solid var(--line); border-radius:14px; padding:4px; box-shadow:0 8px 24px rgba(33,30,26,.12);}
+.menu-list button{display:block; width:100%; text-align:left; padding:.5rem .75rem; font-size:.85rem; border-radius:10px; color:var(--ink);}
+.menu-list button:hover{background:var(--paper-2);}
+/* stop the page scrolling behind an open dialog */
+body:has(.modal-backdrop:not(.hidden)){overflow:hidden;}
 .btn-primary{background:var(--terracotta); color:#fff;}
 .btn-primary:hover{background:var(--terracotta-dark);}
 .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink);}

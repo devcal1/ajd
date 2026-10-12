@@ -75,6 +75,7 @@ function summary(row) {
   return {
     id: row.id,
     projectId: row.project_id,
+    seq: row.seq,
     label: row.label,
     note: row.note,
     createdAt: row.created_at,

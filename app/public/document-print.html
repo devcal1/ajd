@@ -21,7 +21,8 @@
     .doc-page { max-width: none; padding: 0 !important; }
   }
   .doc-page { max-width: 820px; margin: 0 auto; }
-  .doc-table th, .doc-table td { padding: .5rem .6rem; text-align: left; vertical-align: top; }
+  .doc-table { table-layout: fixed; }
+  .doc-table th, .doc-table td { padding: .5rem .45rem; text-align: left; vertical-align: top; }
   .doc-table th { font-size: .68rem; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); border-bottom: 1px solid var(--line); }
   .doc-table td { font-size: .85rem; border-bottom: 1px solid var(--line); }
   .doc-thumb { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; background: var(--paper-2); }
@@ -44,9 +45,16 @@
     // Per-project display settings (set in the project's Edit dialog); filled in by load().
     let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, showSupplierColumn: true, showSourceLinks: false, headerText: '', grouping: 'room' };
     let bySupplier = false;
+    // One decision for the whole document, so every room's table has identical columns.
+    let docHasImages = false;
 
     function tableHead(hasImages, withSupplier) {
-      return `<thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th>${withSupplier ? '<th>Supplier</th>' : ''}<th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
+      const cols = [
+        hasImages ? '<col style="width:60px">' : '', '<col>', withSupplier ? '<col style="width:92px">' : '',
+        '<col style="width:100px"><col style="width:34px">',
+        S.showCosts ? '<col style="width:62px"><col style="width:70px">' : '', S.showApproval ? '<col style="width:124px">' : ''
+      ].join('');
+      return `<colgroup>${cols}</colgroup><thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th>${withSupplier ? '<th>Supplier</th>' : ''}<th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
     }
 
     function esc(s) {
@@ -85,7 +93,7 @@
           <td style="color:var(--ink-soft)">${sel.qty || 1}</td>
           ${S.showCosts ? `<td style="color:var(--ink-soft)">${sel.cost != null ? money(sel.cost) : '—'}</td>
           <td style="color:var(--ink)" class="font-semibold">${lineTotal != null ? money(lineTotal) : '—'}</td>` : ''}
-          ${S.showApproval ? `<td>${approvalHtml}</td>` : ''}
+          ${S.showApproval ? `<td style="white-space:nowrap">${approvalHtml}</td>` : ''}
         </tr>`;
     }
 
@@ -93,7 +101,7 @@
       const live = room.selections.filter(s => s.status !== 'rejected');
       if (!live.length) return '';
       const roomTotal = live.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
-      const hasImages = S.showImages && live.some(s => s.imagePath);
+      const hasImages = S.showImages && docHasImages;
       const rows = live.map(sel => selectionRowHtml(sel, hasImages)).join('');
       return `
         <div class="mb-8 doc-room">
@@ -102,7 +110,7 @@
             ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(roomTotal)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
-            <table class="doc-table w-full" style="min-width:560px">
+            <table class="doc-table w-full" style="min-width:600px">
               ${tableHead(hasImages, S.showSupplierColumn)}
               <tbody>${rows}</tbody>
             </table>
@@ -122,7 +130,7 @@
         const key = supplierKey(sel.supplier);
         if (!groups.has(key)) groups.set(key, { spellings: new Map(), items: [] });
         const g = groups.get(key);
-        const label = String(sel.supplier || '').trim().replace(/s+/g, ' ');
+        const label = String(sel.supplier || '').trim().replace(/\s+/g, ' ');
         g.spellings.set(label, (g.spellings.get(label) || 0) + 1);
         g.items.push({ sel, roomName: room.name });
       }));
@@ -135,7 +143,7 @@
 
     function supplierSectionHtml(group) {
       const total = group.items.reduce((s, i) => s + (i.sel.cost || 0) * (i.sel.qty || 1), 0);
-      const hasImages = S.showImages && group.items.some(i => i.sel.imagePath);
+      const hasImages = S.showImages && docHasImages;
       const rows = group.items.map(i => selectionRowHtml(i.sel, hasImages, i.roomName)).join('');
       return `
         <div class="mb-8 doc-room">
@@ -144,7 +152,7 @@
             ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(total)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
-            <table class="doc-table w-full" style="min-width:560px">
+            <table class="doc-table w-full" style="min-width:600px">
               ${tableHead(hasImages)}
               <tbody>${rows}</tbody>
             </table>
@@ -175,6 +183,7 @@
       S = Object.assign(S, project.pdfSettings || {});
       const groupParam = params.get('group');
       bySupplier = groupParam ? groupParam === 'supplier' : S.grouping === 'supplier';
+      docHasImages = rooms.some(r => r.selections.some(s => s.status !== 'rejected' && s.imagePath));
       const grandTotal = rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
       const issued = revision ? new Date(revision.createdAt.replace(' ', 'T') + 'Z') : new Date();
       const today = issued.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -183,11 +192,14 @@
         <div class="flex items-start justify-between mb-8 pb-6" style="border-bottom:1px solid var(--line)">
           <div>
             <p class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</p>
-            <p class="text-xs" style="color:var(--ink-soft)">${esc(S.headerText || 'FF&E design document')}${bySupplier ? ' · by supplier' : ''}${revision ? ' · ' + esc(revision.label) : ''}</p>
-            <p class="text-xs" style="color:var(--ink-soft)">${esc(today)}</p>
+            <p class="text-xs" style="color:var(--ink-soft)">${esc(S.headerText || 'FF&E design document')}${bySupplier ? ' · by supplier' : ''}</p>
+            ${revision ? '' : `<p class="text-xs" style="color:var(--ink-soft)">${esc(today)}</p>`}
           </div>
         </div>
-        <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">${esc(project.name)}</h1>
+        <div class="flex items-start justify-between gap-4 mb-1">
+          <h1 class="font-display text-3xl" style="color:var(--ink)">${esc(project.name)}</h1>
+          ${revision ? `<div class="text-right shrink-0"><p class="font-display text-2xl" style="color:var(--terracotta-dark)">${esc(revision.label)}</p><p class="text-xs" style="color:var(--ink-soft)">Issued ${esc(today)}</p></div>` : ''}
+        </div>
         <p class="text-sm mb-6" style="color:var(--ink-soft)">${project.clientName ? `Prepared for ${esc(project.clientName)}` : ''}</p>
         ${sections.length ? sections.join('') : `<p class="text-sm" style="color:var(--ink-soft)">No selections to show yet.</p>`}
         ${S.showCosts ? `<div class="flex items-center justify-between pt-4 mt-2" style="border-top:1px solid var(--line)">
