@@ -1,15 +1,25 @@
 const express = require('express');
-const { checkPassword } = require('../auth');
+const { checkPassword, loginDelayMs, noteLogin } = require('../auth');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
-  const { password } = req.body || {};
-  if (!checkPassword(password)) {
-    return res.status(401).json({ error: 'Incorrect password' });
+router.post('/login', async (req, res, next) => {
+  try {
+    const { password } = req.body || {};
+    const delay = loginDelayMs(req.ip);
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    const ok = await checkPassword(password);
+    noteLogin(req.ip, ok);
+    if (!ok) return res.status(401).json({ error: 'Incorrect password' });
+    // fresh session id on login (prevents session fixation)
+    req.session.regenerate(err => {
+      if (err) return next(err);
+      req.session.authed = true;
+      res.json({ ok: true });
+    });
+  } catch (err) {
+    next(err);
   }
-  req.session.authed = true;
-  res.json({ ok: true });
 });
 
 router.post('/logout', (req, res) => {

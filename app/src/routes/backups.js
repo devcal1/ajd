@@ -1,5 +1,5 @@
 const express = require('express');
-const { runBackup, listBackups, restoreBackup, backupExists } = require('../backup');
+const { runBackup, listBackups, stageRestore, applyRestore, backupExists } = require('../backup');
 
 const router = express.Router();
 
@@ -21,19 +21,29 @@ router.post('/api/backups/:name/restore', (req, res) => {
   if (!backupExists(name)) {
     return res.status(400).json({ error: 'Backup not found: ' + name });
   }
-  // Do the actual file swap + DB close only once this response has fully
-  // finished (including express-session's own post-response touch, which
-  // still needs the DB open) -- doing it inline during the handler raced
-  // that touch against restoreBackup()'s db.close().
+  // Everything that can fail runs BEFORE we answer "restarting", so a failure is reported
+  // honestly (the Settings page otherwise sees the server still up and assumes it worked):
+  //  1. a safety copy of the CURRENT state (a restore is otherwise unrecoverable), pruning
+  //     taught never to delete the backup being restored;
+  //  2. staging + integrity check of the chosen backup.
+  let staged;
+  try {
+    runBackup(name);
+    staged = stageRestore(name);
+  } catch (err) {
+    console.error('[backup] restore not started:', err.message);
+    return res.status(500).json({ error: 'Restore could not be started and nothing was changed: ' + err.message });
+  }
+  // The swap itself waits for this response to finish (including express-session's own
+  // post-response touch, which still needs the DB open) -- doing it inline raced that touch
+  // against db.close().
   res.on('finish', () => {
     try {
-      restoreBackup(name);
+      applyRestore(staged);
     } catch (err) {
-      console.error('[backup] restore failed:', err.message);
-      // Nothing live was touched (the failure was while staging the backup), so keep serving
-      // instead of restarting into a half-restored state.
-      if (err.untouched) return;
+      console.error('[backup] restore failed (rolled back):', err.message);
     }
+    // Always restart: the DB connection was closed, so the process cannot keep serving.
     setTimeout(() => process.exit(1), 100);
   });
   res.json({ ok: true, restarting: true });

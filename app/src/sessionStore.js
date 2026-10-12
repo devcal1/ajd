@@ -43,7 +43,16 @@ class SqliteSessionStore extends session.Store {
   }
 
   touch(sid, sessionData, cb) {
-    this.set(sid, sessionData, cb);
+    try {
+      const expiresAt = sessionData.cookie && sessionData.cookie.expires
+        ? new Date(sessionData.cookie.expires).getTime()
+        : Date.now() + 24 * 60 * 60 * 1000;
+      // UPDATE only: if the row was deleted (logout, password change) it must stay deleted.
+      db.prepare('UPDATE sessions SET expires_at = ? WHERE sid = ?').run(expiresAt, sid);
+      cb(null);
+    } catch (err) {
+      cb(err);
+    }
   }
 }
 

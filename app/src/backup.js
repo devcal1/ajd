@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 
 // Backups live inside DATA_DIR, the same directory both app/docker-compose.yml
@@ -46,9 +47,9 @@ function listBackups() {
     .map(name => ({ name, bytes: dirSize(path.join(BACKUPS_DIR, name)) }));
 }
 
-function prune() {
-  const all = listBackups().map(b => b.name).sort(); // oldest first
-  const excess = all.length - RETENTION;
+function prune(protectName) {
+  const all = listBackups().map(b => b.name).filter(n => n !== protectName).sort(); // oldest first
+  const excess = all.length + (protectName ? 1 : 0) - RETENTION;
   if (excess <= 0) return;
   for (const name of all.slice(0, excess)) {
     fs.rmSync(path.join(BACKUPS_DIR, name), { recursive: true, force: true });
@@ -60,22 +61,24 @@ function prune() {
 // of the live SQLite DB (safe to run while the app is serving requests, even
 // under WAL mode -- it's a point-in-time copy, not a raw file copy of a file
 // that may be mid-write) plus a copy of the uploads directory.
-function runBackup() {
+function runBackup(protectName) {
   fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   const dir = path.join(BACKUPS_DIR, timestamp());
-  fs.mkdirSync(dir, { recursive: true });
+  const partial = dir + '.partial';
+  fs.mkdirSync(partial, { recursive: true });
   try {
-    db.prepare('VACUUM INTO ?').run(path.join(dir, 'ajd.db'));
+    db.prepare('VACUUM INTO ?').run(path.join(partial, 'ajd.db'));
     if (fs.existsSync(UPLOADS_DIR)) {
-      fs.cpSync(UPLOADS_DIR, path.join(dir, 'uploads'), { recursive: true });
+      fs.cpSync(UPLOADS_DIR, path.join(partial, 'uploads'), { recursive: true });
     }
+    fs.renameSync(partial, dir); // only now does it exist under its real, listable name
   } catch (err) {
     // A half-written backup must not count against retention or show up as restorable.
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(partial, { recursive: true, force: true });
     throw err;
   }
   console.log(`[backup] wrote ${dir}`);
-  prune();
+  prune(protectName);
   return dir;
 }
 
@@ -118,8 +121,26 @@ function scheduleNext() {
 // setup step. A brand-new install also gets one quick backup shortly after
 // first boot so it isn't left with zero backups for up to 24h waiting for
 // the first nightly run.
+// Leftovers from an interrupted backup or restore are never valid and would otherwise sit on
+// disk forever (they are invisible to listBackups()/prune()).
+function sweepLeftovers() {
+  try {
+    for (const name of fs.readdirSync(BACKUPS_DIR)) {
+      const full = path.join(BACKUPS_DIR, name);
+      const orphan = name.endsWith('.partial') ||
+        (BACKUP_NAME.test(name) && !fs.existsSync(path.join(full, 'ajd.db')));
+      if (orphan) fs.rmSync(full, { recursive: true, force: true });
+    }
+    fs.rmSync(DB_FILE + '.restoring', { force: true });
+    fs.rmSync(UPLOADS_DIR + '.restoring', { recursive: true, force: true });
+  } catch (err) {
+    console.error('[backup] sweep failed:', err.message);
+  }
+}
+
 function startSchedule() {
   fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+  sweepLeftovers();
   if (listBackups().length === 0) {
     setTimeout(safeRun, 60 * 1000);
   }
@@ -152,17 +173,19 @@ function backupExists(name) {
   }
 }
 
-// Restores a chosen backup over the live data, then exits the process so the
-// container's restart policy (restart: unless-stopped / on-failure in both
-// compose files) brings the app back up reading the restored files. There's
-// no safe way to hot-swap the DB file under the one open node:sqlite
-// connection every route shares, so a deliberate restart is the mechanism,
-// not a bug -- the API response tells the caller to expect it.
+// Restoring replaces the live DB + uploads with a backup's, then exits the process so the
+// container's restart policy (restart: unless-stopped / on-failure in both compose files) brings
+// the app back up reading the restored files. There's no safe way to hot-swap the DB file under
+// the one open node:sqlite connection every route shares, so a deliberate restart is the
+// mechanism, not a bug -- the API response tells the caller to expect it.
 //
-// Everything that can fail (reading and copying the backup) happens BEFORE the live files are
-// touched: the backup is staged next to them, then swapped in with renames. A failure while
-// staging throws an error with .untouched = true, meaning nothing live was changed.
-function restoreBackup(name) {
+// Two phases, so every step that can fail happens before anything live is touched:
+//   stageRestore(name)  copies the backup next to the live files and checks the DB opens and
+//                       passes PRAGMA quick_check. Failure here changes nothing (err.untouched).
+//   applyRestore()      closes the DB and swaps by rename (uploads first, DB last), undoing the
+//                       renames already done if any later one fails. Only deletes the old data
+//                       once everything is in place.
+function stageRestore(name) {
   const dir = assertSafeName(name);
   const stagedDb = DB_FILE + '.restoring';
   const stagedUploads = UPLOADS_DIR + '.restoring';
@@ -170,6 +193,19 @@ function restoreBackup(name) {
     fs.rmSync(stagedDb, { force: true });
     fs.rmSync(stagedUploads, { recursive: true, force: true });
     fs.copyFileSync(path.join(dir, 'ajd.db'), stagedDb);
+    const probe = new DatabaseSync(stagedDb, { readOnly: true });
+    try {
+      const row = probe.prepare('PRAGMA quick_check').get();
+      if (!row || Object.values(row)[0] !== 'ok') throw new Error('The backup database is damaged');
+      // An empty file passes quick_check but would wipe everything: it must look like this app's DB.
+      const tables = new Set(probe.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name));
+      if (!['settings', 'projects', 'library_items', '_migrations'].every(t => tables.has(t)) ||
+          !probe.prepare('SELECT 1 FROM settings WHERE id = 1').get()) {
+        throw new Error('The backup is not an AJD database');
+      }
+    } finally {
+      probe.close();
+    }
     const backupUploads = path.join(dir, 'uploads');
     if (fs.existsSync(backupUploads)) fs.cpSync(backupUploads, stagedUploads, { recursive: true });
     else fs.mkdirSync(stagedUploads, { recursive: true });
@@ -179,12 +215,40 @@ function restoreBackup(name) {
     err.untouched = true;
     throw err;
   }
+  return { name, stagedDb, stagedUploads };
+}
+
+function applyRestore({ name, stagedDb, stagedUploads }) {
+  const oldDb = DB_FILE + '.old';
+  const oldUploads = UPLOADS_DIR + '.old';
   db.close();
-  for (const suffix of ['-wal', '-shm']) fs.rmSync(DB_FILE + suffix, { force: true });
-  fs.renameSync(stagedDb, DB_FILE);
-  fs.rmSync(UPLOADS_DIR, { recursive: true, force: true });
-  fs.renameSync(stagedUploads, UPLOADS_DIR);
+  const undo = [];
+  try {
+    fs.rmSync(oldDb, { force: true });
+    fs.rmSync(oldUploads, { recursive: true, force: true });
+    for (const suffix of ['-wal', '-shm']) fs.rmSync(DB_FILE + suffix, { force: true });
+    if (fs.existsSync(UPLOADS_DIR)) {
+      fs.renameSync(UPLOADS_DIR, oldUploads);
+      undo.push(() => fs.renameSync(oldUploads, UPLOADS_DIR));
+    }
+    fs.renameSync(stagedUploads, UPLOADS_DIR);
+    undo.push(() => fs.renameSync(UPLOADS_DIR, stagedUploads));
+    fs.renameSync(DB_FILE, oldDb);
+    undo.push(() => fs.renameSync(oldDb, DB_FILE));
+    fs.renameSync(stagedDb, DB_FILE);
+  } catch (err) {
+    for (const step of undo.reverse()) {
+      try { step(); } catch (e) { console.error('[backup] rollback step failed:', e.message); }
+    }
+    throw err;
+  }
+  fs.rmSync(oldDb, { force: true });
+  fs.rmSync(oldUploads, { recursive: true, force: true });
   console.log(`[backup] restored ${name} -- exiting for a clean restart`);
 }
 
-module.exports = { runBackup, listBackups, restoreBackup, backupExists, startSchedule, BACKUPS_DIR };
+function restoreBackup(name) {
+  applyRestore(stageRestore(name));
+}
+
+module.exports = { runBackup, listBackups, restoreBackup, stageRestore, applyRestore, backupExists, startSchedule, BACKUPS_DIR };

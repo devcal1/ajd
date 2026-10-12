@@ -28,7 +28,9 @@ function guard(fn) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
+  if (e.key !== 'Escape' || e.isComposing) return;
+  const menu = document.querySelector('details.menu[open]');
+  if (menu) { menu.removeAttribute('open'); return; }
   const m = document.querySelector('.modal-backdrop:not(.hidden)');
   if (!m) return;
   m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));

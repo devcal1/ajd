@@ -414,6 +414,31 @@ Found by a multi-agent audit (code review + black-box testing); things a future 
   present, en-AU) live in `js/shared.js`. Project-page totals exclude rejected selections, matching the
   client document.
 
+Second audit pass (Opus agents), additions:
+- **Restore is two-phase** (`backup.js`): the route first takes a safety backup of the CURRENT data
+  (`runBackup(protectName)`, pruning never deletes the backup being restored), then `stageRestore()`
+  copies + integrity-checks the chosen backup (`PRAGMA quick_check`, and it must contain this app's
+  tables and a settings row — an EMPTY sqlite file passes quick_check but would wipe everything). Any
+  failure there is a 500 with nothing changed. Only then does `applyRestore()` swap by rename (uploads
+  first, DB last) with rollback of the renames done so far. Backups are written to `<name>.partial`
+  and renamed when complete; leftovers are swept at boot.
+- **CSRF**: SameSite=Lax treats other ports on the same host (other Umbrel apps) as same-site, so
+  `index.js` refuses any non-GET request whose `Sec-Fetch-Site` is not same-origin/none. (Origin/Host is
+  deliberately not compared: Umbrel's proxy may rewrite Host.)
+- **Sessions**: cookie name is `ajd.sid` (another app's default `connect.sid` would clobber it); login
+  regenerates the session id; `touch` only UPDATEs (it used to upsert and resurrect a session that
+  logout/password-change had just deleted); login failures add a progressive delay (never a lockout);
+  bcrypt compares are async; passwords max 72 bytes.
+- **Clipper HTML parsing is linear** (`scanTags`/`readMeta` in `clip.js`): regexes like /<meta[^>]*>/
+  are quadratic on unclosed tags and froze the server for minutes on a 2MB page. Do not reintroduce
+  whole-page regexes.
+- **PDF export** (`pdf.js`): exports are serialised (one Chromium at a time), only the `ajd.sid` cookie
+  is forwarded, the page must stay on /document-print.html (never return the login page as a PDF), and it
+  waits for `window.__docReady` (set by the print page) instead of `networkidle0`.
+- Inputs: costs must be plain numbers/decimal strings, qty a whole number (no truncation), uploads
+  must be JPEG/PNG/WebP/GIF/AVIF (loud 400 otherwise); POST /revisions is one transaction;
+  `GET /api/projects/:id/revisions/next` gives the label the server will assign next.
+
 ## Working conventions for this project
 
 - **Project page layout** (after the 2026-10-12 Fable review): the header card has only Edit project +

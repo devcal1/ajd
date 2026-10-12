@@ -163,11 +163,32 @@ router.get('/api/projects/:projectId/revisions', (req, res) => {
   res.json(rows.map(summary));
 });
 
+// The label the next issued revision will get (matches createRevision: high-water mark + 1).
+router.get('/api/projects/:projectId/revisions/next', (req, res) => {
+  const project = db.prepare('SELECT id, revision_seq FROM projects WHERE id = ?').get(String(req.params.projectId));
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+  const max = db.prepare('SELECT MAX(seq) AS m FROM document_revisions WHERE project_id = ?').get(project.id).m || 0;
+  const seq = Math.max(project.revision_seq || 0, max) + 1;
+  res.json({ seq, label: revisionLabel(seq) });
+});
+
 router.post('/api/projects/:projectId/revisions', (req, res) => {
   const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(req.params.projectId);
   if (!project) return res.status(404).json({ error: 'Project not found' });
   const note = String((req.body && req.body.note) || '').trim().slice(0, 200);
-  res.status(201).json(summary(createRevision(project.id, note)));
+  // One transaction: a failed INSERT must not burn a revision number, and the image copies made
+  // along the way must not be left orphaned.
+  createdCopies = [];
+  let row;
+  try {
+    transaction(() => { row = createRevision(project.id, note); });
+  } catch (err) {
+    createdCopies.forEach(deleteUpload);
+    createdCopies = [];
+    throw err;
+  }
+  createdCopies = [];
+  res.status(201).json(summary(row));
 });
 
 router.get('/api/revisions/:id', (req, res) => {

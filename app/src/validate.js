@@ -12,7 +12,9 @@ const MAX_MONEY = 1e9;
 // '' / undefined / null -> null (not set). Anything else must be a finite number in range.
 function parseMoney(raw, label) {
   if (raw === undefined || raw === null || raw === '') return null;
-  if (typeof raw === 'object') throw new InputError(`${label} must be a number`);
+  // Only real numbers or plain decimal strings: Number() would also accept ' ', true, '0x10', '1e3'.
+  const plain = typeof raw === 'number' || (typeof raw === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(raw));
+  if (!plain) throw new InputError(`${label} must be a number`);
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > MAX_MONEY) {
     throw new InputError(`${label} must be a number between 0 and 1,000,000,000`);
@@ -22,8 +24,9 @@ function parseMoney(raw, label) {
 
 function parseQty(raw) {
   if (raw === undefined || raw === null || raw === '') return 1;
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 1 || n > 100000) throw new InputError('Quantity must be a whole number between 1 and 100,000');
+  // parseInt would silently truncate "3.7" to 3 and read "1e2" as 1.
+  const n = typeof raw === 'number' ? raw : (/^\s*\d+\s*$/.test(String(raw)) ? Number(raw) : NaN);
+  if (!Number.isInteger(n) || n < 1 || n > 100000) throw new InputError('Quantity must be a whole number between 1 and 100,000');
   return n;
 }
 

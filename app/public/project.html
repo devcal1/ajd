@@ -376,7 +376,12 @@
 
     async function loadRooms() {
       rooms = await api(`/api/projects/${id}/rooms`);
-      try { revisions = await api(`/api/projects/${id}/revisions`); } catch (e) { revisions = []; }
+      try {
+        revisions = await api(`/api/projects/${id}/revisions`);
+      } catch (e) {
+        revisions = [];
+        toast('Could not load issued revisions');
+      }
     }
 
     function fmtIssued(s) {
@@ -468,9 +473,16 @@
       document.querySelectorAll('details.menu[open]').forEach(d => { if (!d.contains(e.target)) d.removeAttribute('open'); });
     });
 
-    function openIssueModal() {
-      const next = Math.max(0, ...revisions.map(r => r.seq || 0)) + 1;
-      const label = revisionLabelFor(next);
+    async function openIssueModal() {
+      // Ask the server: it numbers from a per-project high-water mark, so guessing from the
+      // visible revisions is wrong after the latest one has been deleted.
+      let label;
+      try {
+        label = (await api(`/api/projects/${id}/revisions/next`)).label;
+      } catch (err) {
+        toast(err.message || 'Could not prepare the revision');
+        return;
+      }
       document.getElementById('sync-title').textContent = `Issue ${label}`;
       document.getElementById('sync-body').innerHTML = `
         <p class="mb-3" style="color:var(--ink-soft)">This freezes the document exactly as it is now (rooms, selections, prices and photos) as <strong style="color:var(--ink)">${esc(label)}</strong>. Later edits won't change it, and you can view, export, compare or restore it at any time.</p>

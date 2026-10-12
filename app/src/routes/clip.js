@@ -111,6 +111,7 @@ function request(url, { maxBytes, accept, referer }) {
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
+        clearTimeout(deadline);
         try {
           return resolve({ redirect: new URL(res.headers.location, url).href });
         } catch (e) {
@@ -165,15 +166,43 @@ function decodeEntities(s) {
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
-function metaContent(html, name) {
-  const tags = html.match(/<meta\b[^>]*>/gi) || [];
-  for (const tag of tags) {
-    const key = tag.match(/\b(?:property|name|itemprop)\s*=\s*["']([^"']+)["']/i);
-    if (!key || key[1].toLowerCase() !== name) continue;
-    const content = tag.match(/\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
-    if (content) return decodeEntities(content[1] != null ? content[1] : content[2]).trim();
+// Linear tag scanner (indexOf, no regex over the whole page). A regex like /<meta\b[^>]*>/ goes
+// QUADRATIC on a page full of unclosed "<meta " (measured: 128KB took 6s, a 2MB page would take
+// ~25 minutes) and freezes the single-threaded server for every user. Here each position is
+// visited once: the next '>' is cached and a "tag" longer than 4KB is skipped, not retried.
+function scanTags(lower, html, name, limit) {
+  const out = [];
+  const needle = '<' + name;
+  let i = 0;
+  let gt = -1;
+  while (out.length < limit) {
+    const idx = lower.indexOf(needle, i);
+    if (idx < 0) break;
+    const c = lower.charCodeAt(idx + needle.length);
+    // must be followed by whitespace, '>' or '/', so "<metadata" is not a "<meta"
+    if (!(c === 32 || c === 9 || c === 10 || c === 13 || c === 62 || c === 47)) { i = idx + 1; continue; }
+    if (gt < idx) {
+      gt = lower.indexOf('>', idx);
+      if (gt < 0) break;
+    }
+    if (gt - idx > 4096) { i = idx + needle.length; continue; }
+    out.push({ end: gt + 1, tag: html.slice(idx, gt + 1) });
+    i = gt + 1;
   }
-  return '';
+  return out;
+}
+
+// Returns a function name -> content for the page's <meta property|name|itemprop=... content=...>.
+function readMeta(lower, html) {
+  const map = new Map();
+  for (const { tag } of scanTags(lower, html, 'meta', 400)) {
+    const key = tag.match(/\b(?:property|name|itemprop)\s*=\s*["']([^"']{1,100})["']/i);
+    if (!key) continue;
+    const content = tag.match(/\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const name = key[1].toLowerCase();
+    if (content && !map.has(name)) map.set(name, decodeEntities(content[1] != null ? content[1] : content[2]).trim());
+  }
+  return name => map.get(name) || '';
 }
 
 function findProduct(node) {
@@ -192,7 +221,7 @@ function str(v) {
 }
 
 function parsePrice(raw) {
-  let s = String(raw || '').replace(/[^0-9.,]/g, '');
+  let s = ((String(raw || '').match(/\d[\d.,]*/) || [''])[0]).replace(/[.,]+$/, '');
   if (!s) return '';
   // "1.299" / "1,299" (exactly three digits after a single separator) is a thousands separator.
   if (/^\d{1,3}([.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, '');
@@ -206,12 +235,15 @@ function parsePrice(raw) {
 }
 
 function extractProduct(html, pageUrl) {
+  const lower = html.toLowerCase();
+  const meta = readMeta(lower, html);
   let product = null;
-  const scripts = html.match(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || [];
-  for (const block of scripts) {
+  for (const { end, tag } of scanTags(lower, html, 'script', 60)) {
+    if (!/type\s*=\s*["']application\/ld\+json["']/i.test(tag)) continue;
+    const close = lower.indexOf('</script', end);
+    if (close < 0) break;
     try {
-      const json = JSON.parse(block.replace(/^<script[^>]*>/i, '').replace(/<\/script>$/i, ''));
-      product = findProduct(json);
+      product = findProduct(JSON.parse(html.slice(end, Math.min(close, end + 1000000))));
       if (product) break;
     } catch (e) { /* ignore malformed JSON-LD */ }
   }
@@ -219,21 +251,26 @@ function extractProduct(html, pageUrl) {
   const abs = u => { try { return new URL(u, pageUrl).href; } catch (e) { return ''; } };
   const offers = [].concat(p.offers || []);
   const offer = offers.find(o => o && (o.price || o.lowPrice)) || offers[0];
-  const titleTag = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
+  let titleTag = '';
+  const titleOpen = scanTags(lower, html, 'title', 1)[0];
+  if (titleOpen) {
+    const close = lower.indexOf('</title', titleOpen.end);
+    if (close > 0) titleTag = html.slice(titleOpen.end, Math.min(close, titleOpen.end + 500));
+  }
   const images = [];
-  [].concat(p.image || [], metaContent(html, 'og:image'), metaContent(html, 'twitter:image')).forEach(i => {
+  [].concat(p.image || [], meta('og:image'), meta('twitter:image')).forEach(i => {
     const raw = typeof i === 'object' && i ? (i.url || '') : i;
     const u = raw ? abs(raw) : '';
     if (/^https?:/.test(u) && !images.includes(u)) images.push(u);
   });
   return {
     url: pageUrl,
-    title: decodeEntities(str(p.name) || metaContent(html, 'og:title') || (titleTag || '').trim()).replace(/\s+/g, ' ').trim(),
-    supplier: decodeEntities(str(p.brand) || metaContent(html, 'og:site_name') || new URL(pageUrl).hostname.replace(/^www\./, '')),
+    title: decodeEntities(str(p.name) || meta('og:title') || (titleTag || '').trim()).replace(/\s+/g, ' ').trim(),
+    supplier: decodeEntities(str(p.brand) || meta('og:site_name') || new URL(pageUrl).hostname.replace(/^www\./, '')),
     sku: str(p.sku) || str(p.mpn),
     category: str(p.category),
-    price: parsePrice((offer && (offer.price || offer.lowPrice)) || metaContent(html, 'product:price:amount') || metaContent(html, 'og:price:amount')),
-    notes: decodeEntities(str(p.description) || metaContent(html, 'og:description')).replace(/\s+/g, ' ').trim().slice(0, 500),
+    price: parsePrice((offer && (offer.price || offer.lowPrice)) || meta('product:price:amount') || meta('og:price:amount')),
+    notes: decodeEntities(str(p.description) || meta('og:description')).replace(/\s+/g, ' ').trim().slice(0, 500),
     images: images.slice(0, 8)
   };
 }
@@ -250,7 +287,7 @@ router.post('/api/clip/fetch', async (req, res) => {
     res.json(extractProduct(out.body.toString('utf8'), out.url));
   } catch (err) {
     // Don't echo raw resolver errors (they include the whole hostname).
-    const unreachable = ['ENOTFOUND', 'EAI_AGAIN', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(err.code);
+    const unreachable = typeof err.code === 'string' && /^E[A-Z0-9_]+$/.test(err.code);
     res.status(400).json({ error: unreachable ? 'Could not reach that website' : (err.message || 'Could not read that page') });
   }
 });

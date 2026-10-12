@@ -45,7 +45,18 @@ const safely = handler => (req, res) => {
   });
 };
 
-router.get('/api/projects/:id/document.pdf', safely(async (req, res) => {
+// Each export launches its own Chromium (hundreds of MB). Run them one at a time so a few quick
+// clicks cannot exhaust a small Umbrel's memory; the rest simply wait their turn.
+let exportQueue = Promise.resolve();
+function exclusive(task) {
+  const run = exportQueue.then(task, task);
+  exportQueue = run.catch(() => {});
+  return run;
+}
+
+router.get('/api/projects/:id/document.pdf', safely((req, res) => exclusive(() => renderPdf(req, res))));
+
+async function renderPdf(req, res) {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(String(req.params.id));
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
@@ -74,14 +85,20 @@ router.get('/api/projects/:id/document.pdf', safely(async (req, res) => {
     // a public domain/port the container may not be able to reach itself.
     const port = process.env.PORT || 3000;
     const origin = `http://127.0.0.1:${port}`;
-    // Scope the session cookie to the loopback origin. (An extra *header* would be sent to every
-    // host the page loads, including the Tailwind and Google Fonts CDNs.)
-    const cookies = String(req.headers.cookie || '').split(';').map(c => c.trim()).filter(Boolean).map(c => {
-      const i = c.indexOf('=');
-      return { name: c.slice(0, i), value: c.slice(i + 1), url: origin };
-    }).filter(c => c.name);
-    if (cookies.length) await page.setCookie(...cookies);
-    await page.goto(`${origin}/document-print.html?id=${project.id}${group ? `&group=${group}` : ''}${revision ? `&revision=${revision.id}` : ''}`, { waitUntil: 'networkidle0' });
+    // Forward ONLY the session cookie, scoped to the loopback origin. (An extra *header* would be
+    // sent to every host the page loads, including the Tailwind and Google Fonts CDNs; forwarding
+    // every cookie lets an unrelated __Host-/__Secure- cookie make Chrome reject the lot, and a
+    // duplicate-named cookie can make the wrong one win.) The first one is what express-session used.
+    const session = String(req.headers.cookie || '').split(';').map(c => c.trim()).find(c => c.startsWith('ajd.sid='));
+    if (session) await page.setCookie({ name: 'ajd.sid', value: session.slice('ajd.sid='.length), url: origin });
+    await page.goto(`${origin}/document-print.html?id=${project.id}${group ? `&group=${group}` : ''}${revision ? `&revision=${revision.id}` : ''}`, { waitUntil: 'load', timeout: 45000 });
+    // If the session was refused the page bounces to the login screen, which must never be
+    // returned as if it were the document.
+    if (new URL(page.url()).pathname !== '/document-print.html') throw new Error('Not authenticated for the print page');
+    // The page renders after fetching its data; wait for it explicitly rather than for network
+    // silence (networkidle0 hangs near the timeout whenever a CDN is slow or blocked).
+    await page.waitForFunction('window.__docReady === true', { timeout: 30000 });
+    await page.evaluate(() => Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 4000))]));
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -110,6 +127,6 @@ router.get('/api/projects/:id/document.pdf', safely(async (req, res) => {
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
-}));
+}
 
 module.exports = router;

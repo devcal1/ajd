@@ -74,7 +74,7 @@
   <div id="toast" class="toast"></div>
   <script src="/js/shared.js"></script>
   <script>
-    document.getElementById('password-form').addEventListener('submit', async (e) => {
+    document.getElementById('password-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const currentPassword = document.getElementById('f-current-password').value;
       const newPassword = document.getElementById('f-new-password').value;
@@ -90,7 +90,7 @@
       }
       e.target.reset();
       toast('Password changed');
-    });
+    }));
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -152,7 +152,7 @@
 
     async function restoreBackup(name) {
       const { date, time } = parseBackupName(name);
-      if (!confirm(`Restore the backup from ${date} at ${time}? Everything since then will be lost, and the app will restart.`)) return;
+      if (!confirm(`Restore the backup from ${date} at ${time}? Everything since then will be replaced and the app will restart. A backup of the current data is saved first, so this can be undone by restoring that one.`)) return;
       try {
         await api(`/api/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
       } catch (err) {

@@ -25,6 +25,20 @@ app.use((req, res, next) => {
 });
 app.use(sessionMiddleware);
 
+// CSRF: SameSite=Lax treats other ports on the same host as "same site", so another app on the
+// Umbrel could send forged state-changing requests with this app's cookie. Browsers label every
+// request with Sec-Fetch-Site; anything state-changing that is not same-origin (or a direct
+// navigation) is refused. Requests without the header (curl, older tools) are not browsers
+// carrying a victim's cookie, so they pass.
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  const site = req.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') {
+    return res.status(403).json({ error: 'Cross-site request refused' });
+  }
+  next();
+});
+
 // Public, unauthenticated: the login page's own assets, and the login/logout endpoints.
 app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));
 app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
@@ -34,7 +48,10 @@ app.use(authRoutes);
 // Everything below this line requires an authenticated session.
 app.use(requireAuth);
 
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  // never let a browser reinterpret an uploaded file as something executable
+  setHeaders: res => res.setHeader('X-Content-Type-Options', 'nosniff')
+}));
 app.use(libraryRoutes);
 app.use(projectsRoutes);
 app.use(documentsRoutes);
@@ -61,6 +78,15 @@ app.use((err, req, res, next) => {
 });
 
 // One bad request must never take the whole server (and every other session) down.
+// Node runs as PID 1 in the container and would otherwise ignore SIGTERM, making every
+// stop/update wait out the grace period and then be SIGKILLed mid-write.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    try { require('./db').db.close(); } catch (e) { /* already closed */ }
+    process.exit(0);
+  });
+}
+
 process.on('unhandledRejection', err => console.error('[ajd] unhandled rejection:', err));
 
 app.listen(PORT, () => {
