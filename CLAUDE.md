@@ -350,10 +350,12 @@ code, not decisions.
    header says), instead of one fixed layout for every project. Settings would
    be stored per project and read by `document-print.html`, which is shared by
    the in-browser preview and the PDF renderer, so one change covers both.
-3. **Group items by supplier.** An alternative grouping of the selections (today
-   they are grouped by room only), for ordering from one supplier at a time. The
-   `supplier` field is free text, so grouping will need to cope with spelling and
-   case variants of the same supplier.
+3. ~~Group items by supplier~~ — **built 2026-10-12**, committed locally, not yet
+   pushed/released. `document-print.html?id=&group=supplier` (and
+   `/api/projects/:id/document.pdf?group=supplier`, linked from `project.html` as
+   "Preview by supplier" / "PDF by supplier") regroups the same document by supplier;
+   suppliers are matched ignoring case, spacing and punctuation and labelled with their
+   most common spelling; items with none go last under "No supplier". No schema change.
 4. ~~Warn when an item changed in the library after import~~ — **built
    2026-10-12**, committed locally, not yet pushed/released. See "Library change
    warning" above.

@@ -38,7 +38,9 @@
 
   <script src="/js/shared.js"></script>
   <script>
-    const id = new URLSearchParams(location.search).get('id');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+    const bySupplier = params.get('group') === 'supplier';
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -52,7 +54,7 @@
       return { proposed: 'Proposed', approved: 'Approved', rejected: 'Rejected' }[s] || s;
     }
 
-    function selectionRowHtml(sel, showThumb) {
+    function selectionRowHtml(sel, showThumb, roomName) {
       const thumb = sel.imagePath
         ? `<img src="${esc(sel.imagePath)}" class="doc-thumb" alt="">`
         : '';
@@ -66,7 +68,7 @@
           ${showThumb ? `<td>${thumb}</td>` : ''}
           <td>
             <p style="color:var(--ink)" class="font-semibold">${esc(sel.title)}</p>
-            <p style="color:var(--ink-soft)" class="text-xs">${esc([sel.category, sel.supplier, sel.sku].filter(Boolean).join(' · ')) || ''}</p>
+            <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, sel.category, sel.sku] : [sel.category, sel.supplier, sel.sku]).filter(Boolean).join(' · ')) || ''}</p>
           </td>
           <td style="color:var(--ink-soft)">${esc(spec) || '—'}</td>
           <td style="color:var(--ink-soft)">${sel.qty || 1}</td>
@@ -97,6 +99,48 @@
         </div>`;
     }
 
+    // Supplier is free text, so group on a normalised key (case, spacing and punctuation
+    // ignored) and label each group with its most common spelling.
+    function supplierKey(name) {
+      return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function supplierGroups(rooms) {
+      const groups = new Map();
+      rooms.forEach(room => room.selections.filter(s => s.status !== 'rejected').forEach(sel => {
+        const key = supplierKey(sel.supplier);
+        if (!groups.has(key)) groups.set(key, { spellings: new Map(), items: [] });
+        const g = groups.get(key);
+        const label = String(sel.supplier || '').trim().replace(/s+/g, ' ');
+        g.spellings.set(label, (g.spellings.get(label) || 0) + 1);
+        g.items.push({ sel, roomName: room.name });
+      }));
+      return [...groups.entries()].map(([key, g]) => ({
+        key,
+        name: key ? [...g.spellings.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0] : 'No supplier',
+        items: g.items
+      })).sort((a, b) => (!a.key - !b.key) || a.name.localeCompare(b.name));
+    }
+
+    function supplierSectionHtml(group) {
+      const total = group.items.reduce((s, i) => s + (i.sel.cost || 0) * (i.sel.qty || 1), 0);
+      const hasImages = group.items.some(i => i.sel.imagePath);
+      const rows = group.items.map(i => selectionRowHtml(i.sel, hasImages, i.roomName)).join('');
+      return `
+        <div class="mb-8 doc-room">
+          <div class="flex items-baseline justify-between mb-2 doc-room-head">
+            <h2 class="font-display text-lg" style="color:var(--ink)">${esc(group.name)}</h2>
+            <span class="text-sm" style="color:var(--ink-soft)">${money(total)}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="doc-table w-full" style="min-width:560px">
+              <thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th><th>Spec</th><th>Qty</th><th>Cost</th><th>Total</th><th>Approval</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
     async function load() {
       if (!id) {
         document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">No project specified.</p>`;
@@ -113,12 +157,12 @@
       }
       const grandTotal = rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
       const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
-      const sections = rooms.map(roomSectionHtml).filter(Boolean);
+      const sections = (bySupplier ? supplierGroups(rooms).map(supplierSectionHtml) : rooms.map(roomSectionHtml)).filter(Boolean);
       document.getElementById('content').innerHTML = `
         <div class="flex items-start justify-between mb-8 pb-6" style="border-bottom:1px solid var(--line)">
           <div>
             <p class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</p>
-            <p class="text-xs" style="color:var(--ink-soft)">FF&amp;E design document</p>
+            <p class="text-xs" style="color:var(--ink-soft)">FF&amp;E design document${bySupplier ? ' · by supplier' : ''}</p>
             <p class="text-xs" style="color:var(--ink-soft)">${esc(today)}</p>
           </div>
         </div>

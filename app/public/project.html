@@ -243,6 +243,8 @@
               <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit</button>
               <a href="/document-print.html?id=${id}" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview document</a>
               <a href="/api/projects/${id}/document.pdf" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Download PDF</a>
+              <a href="/document-print.html?id=${id}&group=supplier" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block" title="Same document grouped by supplier, for ordering">Preview by supplier</a>
+              <a href="/api/projects/${id}/document.pdf?group=supplier" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">PDF by supplier</a>
               <button onclick="toggleArchive()" class="btn-ghost px-4 py-2 rounded-lg text-sm">${project.archived ? 'Unarchive' : 'Archive'}</button>
               ${project.archived ? `<button onclick="remove()" class="btn-ghost px-4 py-2 rounded-lg text-sm" style="color:var(--red)">Delete</button>` : ''}
             </div>

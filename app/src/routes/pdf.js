@@ -58,7 +58,7 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     // Umbrel's app_proxy (or any reverse proxy) that Host header points at
     // a public domain/port the container may not be able to reach itself.
     const port = process.env.PORT || 3000;
-    await page.goto(`http://127.0.0.1:${port}/document-print.html?id=${req.params.id}`, { waitUntil: 'networkidle0' });
+    await page.goto(`http://127.0.0.1:${port}/document-print.html?id=${req.params.id}${req.query.group === 'supplier' ? '&group=supplier' : ''}`, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -76,7 +76,7 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     });
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}-design-document.pdf"`
+      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}${req.query.group === 'supplier' ? '-by-supplier' : ''}-design-document.pdf"`
     });
     // page.pdf() returns a Uint8Array, not a Buffer instance — express's
     // res.send would otherwise fail Buffer.isBuffer() and JSON-serialize it.
