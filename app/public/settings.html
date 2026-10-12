@@ -24,6 +24,31 @@
     <h1 class="font-display text-2xl mb-1" style="color:var(--ink)">Settings</h1>
     <p class="text-sm mb-6" style="color:var(--ink-soft)">Practice-wide options.</p>
 
+    <section class="card p-5 mb-5">
+      <h2 class="font-display text-lg mb-1" style="color:var(--ink)">Password</h2>
+      <p class="text-sm mb-4" style="color:var(--ink-soft)">
+        Choose the password used to sign in. Everyone else signed in will be signed out.
+      </p>
+      <form id="password-form" class="space-y-3 max-w-sm">
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)" for="f-current-password">Current password</label>
+          <input id="f-current-password" type="password" autocomplete="current-password" required
+            class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)" for="f-new-password">New password (at least 8 characters)</label>
+          <input id="f-new-password" type="password" autocomplete="new-password" minlength="8" required
+            class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)" for="f-confirm-password">Confirm new password</label>
+          <input id="f-confirm-password" type="password" autocomplete="new-password" minlength="8" required
+            class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Change password</button>
+      </form>
+    </section>
+
     <section class="card p-5">
       <h2 class="font-display text-lg mb-1" style="color:var(--ink)">Backups</h2>
       <p class="text-sm mb-4" style="color:var(--ink-soft)" id="backup-status">Checking backups...</p>
@@ -49,6 +74,24 @@
   <div id="toast" class="toast"></div>
   <script src="/js/shared.js"></script>
   <script>
+    document.getElementById('password-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const currentPassword = document.getElementById('f-current-password').value;
+      const newPassword = document.getElementById('f-new-password').value;
+      if (newPassword !== document.getElementById('f-confirm-password').value) {
+        toast('The new passwords don\'t match');
+        return;
+      }
+      try {
+        await api('/api/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+      } catch (err) {
+        toast(err.message || 'Could not change the password');
+        return;
+      }
+      e.target.reset();
+      toast('Password changed');
+    });
+
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }

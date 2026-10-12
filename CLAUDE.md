@@ -15,8 +15,9 @@ SQLite file, packaged to run on Umbrel or any Docker host.
   npm install
   APP_PASSWORD=changeme node src/index.js
   ```
-  then open `http://localhost:3000`. `APP_PASSWORD` is only read on first
-  boot, to seed the single password row in the database — see Auth below.
+  then open `http://localhost:3000`. `APP_PASSWORD` seeds the single password
+  row on first boot, and keeps overriding it until a password is chosen in
+  Settings — see Auth below.
   `.claude/launch.json` has an `ajd-app` preview config for the Browser tool
   (set `APP_PASSWORD` in the environment before using it, or first-boot will
   throw — see Auth below).
@@ -81,6 +82,8 @@ iteration loop for this app the way there was for the retired `ajd.html`
     `POST /api/backups/run` (trigger one immediately). The actual backup
     logic lives in `app/src/backup.js`, not in a route file — see Backups
     below.
+  - `password.js` (`routes/password.js`) — `POST /api/password`, the
+    change-password endpoint behind login (see Auth).
   - `pdf.js` (`routes/pdf.js`) — `GET /api/projects/:id/document.pdf`:
     launches `puppeteer-core` against a local/system Chromium, navigates it
     (over loopback — `127.0.0.1:$PORT`, not the request's `Host` header, so
@@ -94,13 +97,13 @@ iteration loop for this app the way there was for the retired `ajd.html`
 - **Database** (`app/src/db.js`): `node:sqlite` (Node's built-in SQLite,
   **requires Node ≥ 22.5** — see `engines` in `package.json`), WAL mode, FKs
   on. A small ordered `MIGRATIONS` array + a `_migrations` tracking table —
-  each stage added exactly one migration (`001_settings` … `005_document_
-  rooms_selections`) rather than editing earlier ones; add a new one the
+  each change added exactly one migration (`001_settings` … `006_password_
+  source`) rather than editing earlier ones; add a new one the
   same way, never edit a migration that's already shipped. On first boot
   (no `settings` row yet), `ensureSettingsSeeded()` requires `APP_PASSWORD`
-  in the environment and bcrypt-hashes it into `settings.password_hash` —
-  after that the env var is never read again, so changing it does nothing
-  post-seed (there's no "change password" flow yet; see Known gaps).
+  in the environment and bcrypt-hashes it into `settings.password_hash`.
+  `settings.password_source` is `'env'` until the password is changed in the
+  app, then `'user'`; see Auth below for what that does.
   `DATA_DIR` (default `app/data`, overridden to `/app/data` in Docker) holds
   the SQLite file + `uploads/`.
 - **Frontend** (`app/public/`): static HTML pages, Tailwind via CDN
@@ -110,7 +113,8 @@ iteration loop for this app the way there was for the retired `ajd.html`
   401, `toast()`, `money()` formatter, `logout()`). One page per route:
   `index.html` (projects dashboard), `project.html?id=` (single project:
   details + room-by-room document editor), `library.html` (product
-  library), `settings.html` (backups — see Backups below), `login.html`,
+  library), `settings.html` (change password — see Auth — and backups — see
+  Backups), `login.html`,
   `document-print.html?id=` (print-styled, no nav chrome — the page both the
   PDF route and a user's own browser "Preview document" link render). Every
   authenticated page's header carries a small, deliberately low-contrast
@@ -154,6 +158,24 @@ Single shared password for the whole practice, no per-user accounts.
 - First boot with no `settings` row: `APP_PASSWORD` env var is required and
   gets bcrypt-hashed into the one `settings` row. Missing it throws at
   startup (`db.js`'s `ensureSettingsSeeded`).
+- **Two password sources.** While `settings.password_source` is `'env'` (the
+  password has never been changed in the app), `APP_PASSWORD` stays the source
+  of truth: at every start `ensureSettingsSeeded()` re-hashes it into the row
+  if it no longer matches. That is what lets a corrected or rotated value in
+  the environment take effect instead of leaving the app locked behind a
+  stale hash (this happened on the first Umbrel install: the compose file fed
+  the container `$APP_SEED`, but Umbrel displays a different generated value,
+  `$APP_PASSWORD`, when `deterministicPassword: true`). Once someone sets a
+  password in Settings, `POST /api/password` (`routes/password.js`) stores it
+  and flips the source to `'user'`, after which the environment is never read
+  again — updates and restarts cannot overwrite a chosen password. It needs the
+  current password, requires 8+ characters, and signs every other browser out
+  (deletes the other `sessions` rows). A wrong current password returns 400,
+  not 401, because `shared.js`'s `api()` bounces any 401 to the login page.
+- There is no "forgot password" path for a `'user'` password: with no email or
+  second factor to verify against, recovery means editing the database
+  (`UPDATE settings SET password_hash=…, password_source='env'`) or restoring a
+  backup taken before the change (a restore also restores the old password).
 - `POST /login` with `{ password }` → `checkPassword` compares against that
   hash, sets `req.session.authed = true` on success.
 - `requireAuth` middleware (mounted before every protected route) checks
@@ -277,9 +299,8 @@ mounted after that middleware in `index.js`).
 
 ## Known gaps / deliberate choices
 
-- No "change password" flow — `APP_PASSWORD` only matters on first boot,
-  there's no UI or route to rotate it afterward (would need a direct DB edit
-  or a wipe + reseed today).
+- Password recovery: the password can be changed in Settings, but there is no
+  "forgot password" flow (see Auth). Login also has no rate limiting.
 - No per-user accounts, no roles — one shared password for the whole
   practice, matching the old demo's "no auth" stance but at least gated
   behind something now.

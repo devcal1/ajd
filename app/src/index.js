@@ -8,6 +8,7 @@ const projectsRoutes = require('./routes/projects');
 const documentsRoutes = require('./routes/documents');
 const pdfRoutes = require('./routes/pdf');
 const backupsRoutes = require('./routes/backups');
+const passwordRoutes = require('./routes/password');
 const { startSchedule } = require('./backup');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -32,6 +33,7 @@ app.use(projectsRoutes);
 app.use(documentsRoutes);
 app.use(pdfRoutes);
 app.use(backupsRoutes);
+app.use(passwordRoutes);
 app.use(express.static(PUBLIC_DIR));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));

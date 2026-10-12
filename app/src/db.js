@@ -125,6 +125,14 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_document_selections_room ON document_selections(room_id);
       `);
     }
+  },
+  {
+    id: '006_password_source',
+    up() {
+      // 'env' until the practice sets its own password in Settings, then 'user'. See
+      // ensureSettingsSeeded for why the distinction matters.
+      db.exec(`ALTER TABLE settings ADD COLUMN password_source TEXT NOT NULL DEFAULT 'env'`);
+    }
   }
 ];
 
@@ -147,9 +155,19 @@ function runMigrations() {
 }
 
 function ensureSettingsSeeded() {
-  const row = db.prepare('SELECT id FROM settings WHERE id = 1').get();
-  if (row) return;
+  const row = db.prepare('SELECT password_hash, password_source FROM settings WHERE id = 1').get();
   const initialPassword = process.env.APP_PASSWORD;
+  if (row) {
+    // Until the practice picks its own password in Settings, APP_PASSWORD stays the source of
+    // truth, so a corrected or rotated value in the environment (e.g. Umbrel's generated one)
+    // takes effect on the next start instead of leaving the app locked behind a stale hash. Once
+    // the password has been changed in the app ('user'), the environment is never read again.
+    if (row.password_source === 'env' && initialPassword && !bcrypt.compareSync(initialPassword, row.password_hash)) {
+      db.prepare('UPDATE settings SET password_hash = ? WHERE id = 1').run(bcrypt.hashSync(initialPassword, 10));
+      console.log('[db] re-synced the app password from APP_PASSWORD (not yet changed in Settings)');
+    }
+    return;
+  }
   if (!initialPassword) {
     throw new Error(
       'No settings row exists yet and APP_PASSWORD is not set. ' +
