@@ -73,6 +73,7 @@
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-approval"> Show approval column</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-details"> Show category / supplier / SKU</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-supplier"> Show supplier column</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-links"> Show product links</label>
           </div>
           <div class="grid grid-cols-2 gap-3 mt-2">
             <div>
@@ -322,6 +323,7 @@
             </div>
             <div class="flex items-center gap-2">
               <button onclick="openSelectionForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">+ Add selection</button>
+              <a href="/clip.html?project=${id}&room=${room.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">Clip from web</a>
               <button onclick="openRoomForm(${room.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Rename</button>
             </div>
           </div>
@@ -346,6 +348,7 @@
             </div>
             <p class="text-xs truncate" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
             ${sel.notes ? `<p class="text-xs italic truncate" style="color:var(--ink-soft)">${esc(sel.notes)}</p>` : ''}
+            ${sel.sourceUrl ? `<a href="${esc(sel.sourceUrl)}" rel="noopener" class="text-xs" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted">View product page</a>` : ''}
             <div class="flex items-center justify-between flex-wrap gap-2 mt-1.5">
               <span class="text-sm" style="color:var(--ink-soft)">
                 ${sel.qty > 1 ? `${sel.qty} × ` : ''}${sel.cost != null ? money(sel.cost) : '—'}
@@ -472,6 +475,7 @@
       document.getElementById('f-pdf-approval').checked = ps.showApproval !== false;
       document.getElementById('f-pdf-details').checked = ps.showDetails !== false;
       document.getElementById('f-pdf-supplier').checked = ps.showSupplierColumn !== false;
+      document.getElementById('f-pdf-links').checked = ps.showSourceLinks === true;
       document.getElementById('f-pdf-header').value = ps.headerText || '';
       document.getElementById('f-pdf-grouping').value = ps.grouping || 'room';
       document.getElementById('modal-backdrop').classList.remove('hidden');
@@ -495,6 +499,7 @@
         showApproval: document.getElementById('f-pdf-approval').checked,
         showDetails: document.getElementById('f-pdf-details').checked,
         showSupplierColumn: document.getElementById('f-pdf-supplier').checked,
+        showSourceLinks: document.getElementById('f-pdf-links').checked,
         headerText: document.getElementById('f-pdf-header').value,
         grouping: document.getElementById('f-pdf-grouping').value
       }));

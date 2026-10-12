@@ -178,6 +178,16 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_document_revisions_project ON document_revisions(project_id);
       `);
     }
+  },
+  {
+    id: '010_source_urls',
+    up() {
+      // Where a product was clipped from (web clipper). Informational only; never synced.
+      db.exec(`
+        ALTER TABLE library_items ADD COLUMN source_url TEXT;
+        ALTER TABLE document_selections ADD COLUMN source_url TEXT;
+      `);
+    }
   }
 ];
 

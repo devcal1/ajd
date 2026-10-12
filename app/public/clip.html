@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AJD — Clip from web</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/brand.css">
+</head>
+<body class="min-h-screen">
+  <header class="px-6 py-4 flex items-center justify-between" style="background:#fff; border-bottom:1px solid var(--line)">
+    <span class="font-display text-2xl" style="color:var(--ink)">AJD</span>
+    <nav class="flex items-center gap-5 text-sm">
+      <a href="/" class="nav-link" style="color:var(--ink-soft)">Projects</a>
+      <a href="/library.html" class="nav-link" style="color:var(--ink-soft)">Library</a>
+      <a href="/settings.html" title="Settings" aria-label="Settings" class="icon-link text-base leading-none">⚙</a>
+      <button onclick="logout()" class="btn-ghost px-3 py-1.5 rounded-lg text-sm">Sign out</button>
+    </nav>
+  </header>
+  <main class="p-6 max-w-2xl mx-auto">
+    <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">Clip from web</h1>
+    <p class="text-sm mb-5" style="color:var(--ink-soft)">Check the details, then save the product to the library, and optionally straight into a room.</p>
+
+    <div id="paste-card" class="card p-4 mb-5">
+      <label class="text-xs font-semibold" style="color:var(--ink-soft)">Product page address</label>
+      <div class="flex gap-2 mt-1 flex-wrap">
+        <input id="paste-url" type="url" placeholder="https://..." class="flex-1 min-w-0 border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        <button id="paste-btn" onclick="fetchFromUrl()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Fetch details</button>
+      </div>
+      <p class="text-xs mt-2" style="color:var(--ink-soft)">Some sites block this. On those, use the <em>Clip to AJD</em> bookmark from the <a href="/library.html" style="text-decoration:underline">Library</a> page, or <a href="#" onclick="showForm({}); return false" style="text-decoration:underline">enter the details by hand</a>.</p>
+      <p id="fetch-error" class="text-sm mt-2 hidden" style="color:var(--red)"></p>
+    </div>
+
+    <form id="clip-form" class="card p-5 space-y-3 hidden">
+      <p id="dup-note" class="text-sm hidden" style="color:var(--ink-soft)"></p>
+      <div>
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Title *</label>
+        <input id="c-title" required class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Category</label>
+          <input id="c-category" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Supplier</label>
+          <input id="c-supplier" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">SKU</label>
+          <input id="c-sku" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Cost</label>
+          <input id="c-cost" type="number" step="0.01" min="0" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+          <p id="cost-hint" class="text-xs mt-1 hidden" style="color:var(--ink-soft)">Taken from the page. Retail prices may not be your trade price, so check it.</p>
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Dimensions</label>
+          <input id="c-dimensions" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Finish</label>
+          <input id="c-finish" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Notes</label>
+        <textarea id="c-notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)"></textarea>
+      </div>
+      <div>
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Product page link</label>
+        <input id="c-source" type="url" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+      </div>
+      <div id="image-block">
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Photo</label>
+        <div id="image-grid" class="flex flex-wrap gap-2 mt-1"></div>
+      </div>
+
+      <div class="pt-2" style="border-top:1px solid var(--line)">
+        <label class="text-xs font-semibold" style="color:var(--ink-soft)">Save to</label>
+        <div class="grid grid-cols-2 gap-3 mt-1">
+          <select id="c-project" onchange="loadRooms()" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+            <option value="">Product Library only</option>
+          </select>
+          <select id="c-room" class="w-full border rounded-lg px-3 py-2 text-sm hidden" style="border-color:var(--line)"></select>
+        </div>
+        <p id="dest-note" class="text-xs mt-1" style="color:var(--ink-soft)">The product is always added to the library. Choose a project to also add it to a room's selections.</p>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <a href="/library.html" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Cancel</a>
+        <button id="save-btn" type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
+      </div>
+    </form>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/js/shared.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const query = new URLSearchParams(location.search);
+    let chosenImage = '';
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function fetchFromUrl() {
+      const url = $('paste-url').value.trim();
+      if (!url) return;
+      const btn = $('paste-btn');
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+      $('fetch-error').classList.add('hidden');
+      try {
+        showForm(await api('/api/clip/fetch', { method: 'POST', body: JSON.stringify({ url }) }));
+      } catch (err) {
+        $('fetch-error').textContent = err.message || 'Could not read that page';
+        $('fetch-error').classList.remove('hidden');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Fetch details';
+    }
+
+    // Pages write prices many ways ("$1,299.00", "1.299,00"); a number field only takes 1299.00.
+    function parsePrice(raw) {
+      let s = String(raw || '').replace(/[^0-9.,]/g, '');
+      if (!s) return '';
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+      else s = s.replace(/,/g, '');
+      const n = Number(s);
+      return Number.isFinite(n) && n > 0 ? String(n) : '';
+    }
+
+    function showForm(d) {
+      d.price = parsePrice(d.price);
+      $('c-title').value = d.title || '';
+      $('c-category').value = d.category || '';
+      $('c-supplier').value = d.supplier || '';
+      $('c-sku').value = d.sku || '';
+      $('c-cost').value = d.price || '';
+      $('cost-hint').classList.toggle('hidden', !d.price);
+      $('c-dimensions').value = '';
+      $('c-finish').value = '';
+      $('c-notes').value = d.notes || '';
+      $('c-source').value = d.url || '';
+      renderImages(d.images || []);
+      $('paste-card').classList.add('hidden');
+      $('clip-form').classList.remove('hidden');
+      checkExisting(d.url);
+    }
+
+    function renderImages(images) {
+      chosenImage = images[0] || '';
+      $('image-block').classList.toggle('hidden', !images.length);
+      $('image-grid').innerHTML = images.map((u, i) => `
+        <label class="cursor-pointer">
+          <input type="radio" name="img" value="${esc(u)}" class="sr-only peer" ${i === 0 ? 'checked' : ''}>
+          <img src="${esc(u)}" referrerpolicy="no-referrer" alt="" style="width:84px;height:84px;object-fit:cover;border-radius:10px;border:2px solid transparent" class="peer-checked:border-[var(--terracotta)]" onerror="this.closest('label').remove()">
+        </label>`).join('') + `
+        <label class="cursor-pointer text-xs flex items-center gap-1" style="color:var(--ink-soft)">
+          <input type="radio" name="img" value=""> No photo
+        </label>`;
+      document.querySelectorAll('input[name=img]').forEach(r => r.addEventListener('change', () => { chosenImage = r.value; }));
+    }
+
+    async function checkExisting(url) {
+      const note = $('dup-note');
+      note.classList.add('hidden');
+      if (!url) return;
+      try {
+        const out = await api('/api/clip/existing?url=' + encodeURIComponent(url));
+        if (out.existing && $('c-source').value === url) {
+          note.textContent = `Heads up: this page is already in the library as "${out.existing.title}". Saving will add another copy.`;
+          note.classList.remove('hidden');
+        }
+      } catch (e) { /* the warning is only a courtesy */ }
+    }
+
+    async function loadProjects() {
+      let projects = [];
+      try { projects = await api('/api/projects'); } catch (e) { /* library-only still works */ }
+      $('c-project').innerHTML = '<option value="">Product Library only</option>' +
+        projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+      const pre = query.get('project');
+      if (pre && projects.some(p => String(p.id) === pre)) {
+        $('c-project').value = pre;
+        await loadRooms(query.get('room'));
+      }
+    }
+
+    async function loadRooms(preselect) {
+      const projectId = $('c-project').value;
+      const select = $('c-room');
+      select.classList.toggle('hidden', !projectId);
+      if (!projectId) return;
+      let rooms = [];
+      try { rooms = await api(`/api/projects/${projectId}/rooms`); } catch (e) { /* empty list */ }
+      select.innerHTML = rooms.length
+        ? rooms.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')
+        : '<option value="">No rooms yet: add one on the project first</option>';
+      if (preselect && rooms.some(r => String(r.id) === String(preselect))) select.value = preselect;
+    }
+
+    $('clip-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const projectId = $('c-project').value;
+      const roomId = projectId ? $('c-room').value : '';
+      if (projectId && !roomId) { toast('Pick a room, or choose Product Library only'); return; }
+      const btn = $('save-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const out = await api('/api/clip/save', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: $('c-title').value, category: $('c-category').value, supplier: $('c-supplier').value,
+            sku: $('c-sku').value, cost: $('c-cost').value, dimensions: $('c-dimensions').value,
+            finish: $('c-finish').value, notes: $('c-notes').value, sourceUrl: $('c-source').value,
+            imageUrl: chosenImage, roomId: roomId || null
+          })
+        });
+        if (out.imageFailed) alert('Saved, but the photo could not be downloaded from that site. You can add one by editing the item.');
+        window.location.href = out.projectId ? `/project.html?id=${out.projectId}` : '/library.html';
+      } catch (err) {
+        toast(err.message || 'Save failed');
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+    });
+
+    (function init() {
+      loadProjects();
+      if (location.hash.length > 1) {
+        try {
+          const data = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+          history.replaceState(null, '', location.pathname + location.search);
+          showForm(data);
+          return;
+        } catch (e) { /* fall through to the paste box */ }
+      }
+    })();
+  </script>
+</body>
+</html>

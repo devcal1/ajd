@@ -25,7 +25,15 @@
         <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">Product Library</h1>
         <p class="text-sm" style="color:var(--ink-soft)">Practice-wide products — searchable, reusable across every project.</p>
       </div>
-      <button onclick="openForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add product</button>
+      <div class="flex items-center gap-2 flex-wrap">
+        <a href="/clip.html" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Clip from web</a>
+        <button onclick="openForm()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">+ Add product</button>
+      </div>
+    </div>
+    <div class="card p-4 mb-5 text-sm" style="color:var(--ink-soft)">
+      <p class="mb-2"><strong style="color:var(--ink)">Clip products from any website.</strong> Drag this button to your browser's bookmarks bar, then click it on any product page:</p>
+      <a id="bookmarklet" href="#" onclick="return false" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold inline-block" style="cursor:grab">Clip to AJD</a>
+      <p class="mt-2 text-xs">It reads the product's name, photo, price and supplier from the page and brings them back here to check before saving. If a site blocks it, use <em>Clip from web</em> and paste the product's address instead.</p>
     </div>
     <input id="search" type="text" placeholder="Search by title, category or supplier..."
       class="w-full border rounded-lg px-3 py-2 text-sm mb-5" style="border-color:var(--line)">
@@ -107,6 +115,55 @@
   <script>
     let items = [];
 
+    // Runs on the supplier's page when the bookmarklet is clicked. Self-contained: it is
+    // stringified into the bookmark, so it cannot reference anything outside itself.
+    function clipBookmarklet(origin) {
+      var q = function (sel) { return document.querySelector(sel); };
+      var meta = function (n) {
+        var e = q('meta[property="' + n + '"],meta[name="' + n + '"],meta[itemprop="' + n + '"]');
+        return e ? (e.content || '').trim() : '';
+      };
+      var abs = function (u) { try { return new URL(u, location.href).href; } catch (e) { return ''; } };
+      var product = null;
+      var walk = function (o) {
+        if (!o || typeof o !== 'object' || product) return;
+        if (Array.isArray(o)) { o.forEach(walk); return; }
+        var t = o['@type'];
+        if (t && String(t).indexOf('Product') > -1) { product = o; return; }
+        if (o['@graph']) walk(o['@graph']);
+      };
+      document.querySelectorAll('script[type="application/ld+json"]').forEach(function (s) {
+        try { walk(JSON.parse(s.textContent)); } catch (e) {}
+      });
+      var p = product || {};
+      var str = function (v) { return v == null ? '' : typeof v === 'object' ? String(v.name || v.url || '') : String(v); };
+      var offer = Array.isArray(p.offers) ? p.offers[0] : p.offers;
+      var price = (offer && (offer.price || offer.lowPrice)) || meta('product:price:amount') || meta('og:price:amount') || '';
+      var imgs = [];
+      [].concat(p.image || [], meta('og:image'), meta('twitter:image')).forEach(function (i) {
+        var raw = typeof i === 'object' && i ? (i.url || '') : i;
+        var u = raw ? abs(raw) : '';
+        if (u && imgs.indexOf(u) < 0) imgs.push(u);
+      });
+      var data = {
+        url: location.href,
+        title: str(p.name) || meta('og:title') || document.title,
+        supplier: str(p.brand) || meta('og:site_name') || location.hostname.replace(/^www\./, ''),
+        sku: str(p.sku) || str(p.mpn),
+        category: str(p.category),
+        price: String(price),
+        notes: (str(p.description) || meta('og:description')).slice(0, 500),
+        images: imgs.slice(0, 8)
+      };
+      location.href = origin + '/clip.html#' + encodeURIComponent(JSON.stringify(data));
+    }
+
+    function installBookmarklet() {
+      var code = '(' + clipBookmarklet.toString() + ')(' + JSON.stringify(location.origin) + ')';
+      document.getElementById('bookmarklet').href = 'javascript:' + encodeURIComponent(code);
+    }
+    installBookmarklet();
+
     async function load() {
       const q = document.getElementById('search').value.trim();
       items = await api('/api/library' + (q ? `?q=${encodeURIComponent(q)}` : ''));
@@ -141,6 +198,7 @@
             <p class="font-semibold text-sm truncate" style="color:var(--ink)" title="${esc(it.title)}">${esc(it.title)}</p>
             <p class="text-xs truncate mb-2" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
             ${it.cost != null ? `<p class="text-xs mb-2" style="color:var(--ink-soft)">${money(it.cost)}</p>` : ''}
+            ${it.sourceUrl ? `<a href="${esc(it.sourceUrl)}" rel="noopener" class="text-xs block mb-2" style="color:var(--ink-soft); text-decoration:underline; text-decoration-style:dotted">View product page</a>` : ''}
             <div class="flex items-center gap-2">
               <button onclick="openForm(${it.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Edit</button>
             </div>

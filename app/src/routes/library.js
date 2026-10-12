@@ -31,6 +31,7 @@ function serialize(row) {
     finish: row.finish,
     cost: row.cost,
     notes: row.notes,
+    sourceUrl: row.source_url || null,
     imagePath: row.image_path ? `/uploads/${row.image_path}` : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at

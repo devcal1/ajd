@@ -42,7 +42,7 @@
     const id = params.get('id');
     const revisionId = params.get('revision');
     // Per-project display settings (set in the project's Edit dialog); filled in by load().
-    let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, showSupplierColumn: true, headerText: '', grouping: 'room' };
+    let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, showSupplierColumn: true, showSourceLinks: false, headerText: '', grouping: 'room' };
     let bySupplier = false;
 
     function tableHead(hasImages, withSupplier) {
@@ -77,6 +77,7 @@
           ${showThumb ? `<td>${thumb}</td>` : ''}
           <td>
             <p style="color:var(--ink)" class="font-semibold">${esc(sel.title)}</p>
+            ${S.showSourceLinks && sel.sourceUrl ? `<p class="text-xs"><a href="${esc(sel.sourceUrl)}" style="color:var(--ink-soft); text-decoration:underline">View product</a></p>` : ''}
             <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, ...(S.showDetails ? [sel.category, sel.sku] : [])] : (S.showDetails ? (withSupplier ? [sel.category, sel.sku] : [sel.category, sel.supplier, sel.sku]) : [])).filter(Boolean).join(' · ')) || ''}</p>
           </td>
           ${withSupplier ? `<td style="color:var(--ink-soft)">${esc(sel.supplier) || '—'}</td>` : ''}

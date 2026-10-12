@@ -89,6 +89,7 @@ function serializeSelection(row) {
     qty: row.qty,
     status: row.status,
     notes: row.notes,
+    sourceUrl: row.source_url || null,
     imagePath: row.image_path ? `/uploads/${row.image_path}` : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -307,3 +308,4 @@ router.delete('/api/selections/:id', (req, res) => {
 });
 
 module.exports = router;
+module.exports.snapshotOf = snapshotOf;

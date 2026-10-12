@@ -284,6 +284,25 @@ prompt that lists each field's before/after; `POST /api/selections/:id/library-s
 (`update` / `keep` / `dismiss`) resolves it. Update copies spec fields and photo (file is
 copied) but never qty/status/notes. The badge is not shown in `document-print.html`.
 
+## Web clipper
+
+Built 2026-10-12 (migration `010_source_urls`: `source_url` on `library_items` and
+`document_selections`). Two ways in, one review screen:
+- **Bookmarklet** ("Clip to AJD", on `library.html`, generated from `clipBookmarklet()` with the
+  app's own origin). Runs on the supplier's page, reads schema.org JSON-LD / OpenGraph, and
+  navigates *that same tab* to `/clip.html#<json>` (a top-level navigation, so no mixed-content /
+  CORS / cookie problems from an https page to the http Umbrel). Fails on sites with a strict CSP.
+- **Paste a URL**: `POST /api/clip/fetch` (`routes/clip.js`) fetches the page server-side and
+  parses the same fields. All outbound requests (and redirects) go through `guardedLookup`, which
+  refuses private/loopback/link-local addresses at connect time (the app must not probe the LAN);
+  http(s) only, 10s timeout, 2MB page / 8MB image caps.
+`clip.html` is the prefilled review form; `POST /api/clip/save` always creates a library item (image
+downloaded server-side) and optionally a linked selection in a chosen room (own copy of the photo,
+snapshot taken so the library-change warning works). Price is prefilled but editable (retail is not
+trade). `GET /api/clip/existing?url=` warns about duplicates. The product link shows in the
+library, on selections, and on the document only when the project's "Show product links" display
+setting is on (`showSourceLinks`, default off). Source links are not part of library-sync.
+
 ## Features, by page
 
 - **Projects dashboard** (`index.html`) — grid of project cards, search by
@@ -317,7 +336,7 @@ copied) but never qty/status/notes. The badge is not shown in `document-print.ht
   practice, matching the old demo's "no auth" stance but at least gated
   behind something now.
 - No client-facing portal, procurement/lead-time tracking, approvals
-  workflow, task boards, time tracking, or web clipper/moodboard yet — the
+  workflow, task boards, time tracking, or moodboard yet — the
   retired `ajd.html` prototype had all of these (see archive/README.md);
   none have been rebuilt on the new backend. The current app covers the
   Library → Projects → room-by-room document → PDF slice only.

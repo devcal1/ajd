@@ -10,7 +10,7 @@ const router = express.Router();
 // its images are *copies* in uploads/, so later edits or deletes of the live document can
 // never alter an issued revision.
 
-const SELECTION_FIELDS = ['title', 'category', 'supplier', 'sku', 'dimensions', 'finish', 'cost', 'qty', 'status', 'notes'];
+const SELECTION_FIELDS = ['title', 'category', 'supplier', 'sku', 'dimensions', 'finish', 'cost', 'qty', 'status', 'notes', 'source_url'];
 const COMPARE_FIELDS = [
   { key: 'category', label: 'Category' }, { key: 'supplier', label: 'Supplier' }, { key: 'sku', label: 'SKU' },
   { key: 'dimensions', label: 'Dimensions' }, { key: 'finish', label: 'Finish' }, { key: 'cost', label: 'Cost' },
@@ -95,6 +95,7 @@ function fullView(row) {
       selections: room.selections.map((sel, j) => ({
         ...sel,
         id: j + 1,
+        sourceUrl: sel.source_url || null,
         imagePath: sel.imagePath ? `/uploads/${sel.imagePath}` : null
       }))
     }))
@@ -199,14 +200,14 @@ router.post('/api/revisions/:id/restore', (req, res) => {
     const insRoom = db.prepare('INSERT INTO document_rooms (project_id, name) VALUES (?, ?)');
     const insSel = db.prepare(`
       INSERT INTO document_selections
-        (room_id, title, category, supplier, sku, dimensions, finish, cost, qty, status, notes, image_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (room_id, title, category, supplier, sku, dimensions, finish, cost, qty, status, notes, source_url, image_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     snapshot.rooms.forEach(room => {
       const roomId = insRoom.run(row.project_id, room.name).lastInsertRowid;
       room.selections.forEach(s => {
         insSel.run(roomId, s.title, s.category, s.supplier, s.sku, s.dimensions, s.finish, s.cost, s.qty,
-          s.status, s.notes, copyUpload(s.imagePath));
+          s.status, s.notes, s.source_url || null, copyUpload(s.imagePath));
       });
     });
   });
