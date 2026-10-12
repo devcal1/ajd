@@ -320,6 +320,37 @@ mounted after that middleware in `index.js`).
   none is found, the PDF route 500s with a message pointing at the browser's
   own Print dialog on `document-print.html` as a fallback.
 
+## Backlog — requested by the owner, deliberately not started
+
+Flagged 2026-10-12 to action later. None of these is in progress; don't treat
+them as scheduled. Notes under each are starting points found while reading the
+code, not decisions.
+
+1. **Version control per project document.** Keep numbered versions of a
+   project's room-by-room document (e.g. what was issued to the client as Rev A /
+   Rev B), so earlier issues can be viewed, compared and restored. Today there is
+   only the live document plus the nightly whole-app backups, which are not
+   per-project and not meant for this. It will touch the PDF route (an issued
+   version should presumably render the frozen data, not the live rows) and
+   needs a new migration (append-only, see Working conventions).
+2. **Per-project PDF display settings.** Let each project choose how its PDF is
+   shown (e.g. which columns, images on/off, whether costs appear, what the
+   header says), instead of one fixed layout for every project. Settings would
+   be stored per project and read by `document-print.html`, which is shared by
+   the in-browser preview and the PDF renderer, so one change covers both.
+3. **Group items by supplier.** An alternative grouping of the selections (today
+   they are grouped by room only), for ordering from one supplier at a time. The
+   `supplier` field is free text, so grouping will need to cope with spelling and
+   case variants of the same supplier.
+4. **Warn when an item changed in the library after it was brought into a
+   project.** A button or badge on a selection that says its library item has
+   been updated since import. Importing currently copies the fields into a new
+   `document_selections` row (it links back through `library_item_id` but keeps
+   no snapshot and no import time), so detecting "changed since" needs one of
+   those added, and a decision on what the button does (show the differences,
+   refresh the selection from the library, or both). `library_item_id` is set to
+   NULL if the library item is deleted, so that case needs handling too.
+
 ## Working conventions for this project
 
 - No standing iteration loop is active for `app/` the way `ITERATE.md`
