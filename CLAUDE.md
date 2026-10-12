@@ -338,13 +338,19 @@ Flagged 2026-10-12 to action later. None of these is in progress; don't treat
 them as scheduled. Notes under each are starting points found while reading the
 code, not decisions.
 
-1. **Version control per project document.** Keep numbered versions of a
-   project's room-by-room document (e.g. what was issued to the client as Rev A /
-   Rev B), so earlier issues can be viewed, compared and restored. Today there is
-   only the live document plus the nightly whole-app backups, which are not
-   per-project and not meant for this. It will touch the PDF route (an issued
-   version should presumably render the frozen data, not the live rows) and
-   needs a new migration (append-only, see Working conventions).
+1. ~~Version control per project document~~ — **built 2026-10-12**, committed
+   locally, not yet pushed/released. Migration `009_document_revisions`;
+   `routes/revisions.js`. "Issue new revision" on `project.html` freezes the document
+   as a JSON snapshot (`document_revisions.snapshot`: project name/client/display
+   settings + rooms + selections) labelled Rev A, B... (`seq` per project, never
+   reused). Selection photos are *copied* into `uploads/` so the revision is immune to
+   later edits/deletes; they are removed when the revision or project is deleted.
+   Revisions can be viewed (`document-print.html?id=&revision=`), exported
+   (`document.pdf?revision=`), compared with the live document (items matched by room +
+   title) and restored. Restore replaces the live rooms/selections and first saves the
+   current document as its own revision, so it is undoable; library links are not
+   restored (restored selections are plain copies). Revisions are not touched by
+   library-sync. All four owner-requested backlog items are now built.
 2. ~~Per-project PDF display settings~~ — **built 2026-10-12**, committed locally,
    not yet pushed/released. Migration `008_project_pdf_settings` adds
    `projects.pdf_settings` (JSON; NULL = defaults). Options: show costs/totals,

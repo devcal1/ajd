@@ -159,6 +159,25 @@ const MIGRATIONS = [
       // JSON of per-project document display options; NULL = defaults. See routes/projects.js.
       db.exec(`ALTER TABLE projects ADD COLUMN pdf_settings TEXT`);
     }
+  },
+  {
+    id: '009_document_revisions',
+    up() {
+      // Frozen, issued copies of a project's document (Rev A, Rev B...). snapshot is JSON; see
+      // routes/revisions.js. seq is per project and only ever increases, so labels never repeat.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS document_revisions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          seq INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          note TEXT,
+          snapshot TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_revisions_project ON document_revisions(project_id);
+      `);
+    }
   }
 ];
 

@@ -156,6 +156,11 @@ router.delete('/api/projects/:id', (req, res) => {
     return res.status(400).json({ error: 'Archive the project before deleting it' });
   }
   deleteUpload(existing.cover_image_path);
+  require('./revisions').deleteProjectRevisionFiles(existing.id);
+  db.prepare(`
+    SELECT image_path FROM document_selections
+    WHERE room_id IN (SELECT id FROM document_rooms WHERE project_id = ?)
+  `).all(existing.id).forEach(row => deleteUpload(row.image_path));
   db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id);
   res.status(204).end();
 });

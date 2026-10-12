@@ -40,6 +40,7 @@
   <script>
     const params = new URLSearchParams(location.search);
     const id = params.get('id');
+    const revisionId = params.get('revision');
     // Per-project display settings (set in the project's Edit dialog); filled in by load().
     let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, headerText: '', grouping: 'room' };
     let bySupplier = false;
@@ -153,10 +154,16 @@
         return;
       }
       document.getElementById('back-link').href = `/project.html?id=${id}`;
-      let project, rooms;
+      let project, rooms, revision = null;
       try {
-        project = await api(`/api/projects/${id}`);
-        rooms = await api(`/api/projects/${id}/rooms`);
+        if (revisionId) {
+          revision = await api(`/api/revisions/${revisionId}`);
+          project = revision.project;
+          rooms = revision.rooms;
+        } else {
+          project = await api(`/api/projects/${id}`);
+          rooms = await api(`/api/projects/${id}/rooms`);
+        }
       } catch (e) {
         document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">Project not found.</p>`;
         return;
@@ -165,13 +172,14 @@
       const groupParam = params.get('group');
       bySupplier = groupParam ? groupParam === 'supplier' : S.grouping === 'supplier';
       const grandTotal = rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
-      const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+      const issued = revision ? new Date(revision.createdAt.replace(' ', 'T') + 'Z') : new Date();
+      const today = issued.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
       const sections = (bySupplier ? supplierGroups(rooms).map(supplierSectionHtml) : rooms.map(roomSectionHtml)).filter(Boolean);
       document.getElementById('content').innerHTML = `
         <div class="flex items-start justify-between mb-8 pb-6" style="border-bottom:1px solid var(--line)">
           <div>
             <p class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</p>
-            <p class="text-xs" style="color:var(--ink-soft)">${esc(S.headerText || 'FF&E design document')}${bySupplier ? ' · by supplier' : ''}</p>
+            <p class="text-xs" style="color:var(--ink-soft)">${esc(S.headerText || 'FF&E design document')}${bySupplier ? ' · by supplier' : ''}${revision ? ' · ' + esc(revision.label) : ''}</p>
             <p class="text-xs" style="color:var(--ink-soft)">${esc(today)}</p>
           </div>
         </div>

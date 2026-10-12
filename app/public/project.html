@@ -216,6 +216,7 @@
     let project = null;
     let rooms = [];
     let libraryItems = [];
+    let revisions = [];
 
     function statusLabel(s) {
       return { active: 'Active', 'on hold': 'On hold', complete: 'Complete' }[s] || s;
@@ -280,8 +281,10 @@
           <button onclick="openRoomForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">+ Add room</button>
         </div>
         <div id="rooms" class="space-y-4"></div>
+        <div id="revisions" class="mt-8"></div>
       `;
       renderRooms();
+      renderRevisions();
     }
 
     function totalSelectionCount() {
@@ -367,6 +370,89 @@
 
     async function loadRooms() {
       rooms = await api(`/api/projects/${id}/rooms`);
+      try { revisions = await api(`/api/projects/${id}/revisions`); } catch (e) { revisions = []; }
+    }
+
+    function fmtIssued(s) {
+      return new Date(s.replace(' ', 'T') + 'Z').toLocaleString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function renderRevisions() {
+      const el = document.getElementById('revisions');
+      if (!el) return;
+      const rows = revisions.map(r => `
+        <div class="flex items-start justify-between flex-wrap gap-2 py-2.5">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold" style="color:var(--ink)">${esc(r.label)} <span class="font-normal" style="color:var(--ink-soft)">· ${esc(fmtIssued(r.createdAt))}</span></p>
+            <p class="text-xs" style="color:var(--ink-soft)">${r.roomCount} room${r.roomCount === 1 ? '' : 's'} · ${r.selectionCount} selection${r.selectionCount === 1 ? '' : 's'}${r.note ? ' · ' + esc(r.note) : ''}</p>
+          </div>
+          <div class="flex items-center gap-1 flex-wrap">
+            <a href="/document-print.html?id=${id}&revision=${r.id}" target="_blank" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">View</a>
+            <a href="/api/projects/${id}/document.pdf?revision=${r.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">PDF</a>
+            <button onclick="openCompare(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Compare</button>
+            <button onclick="restoreRevision(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Restore</button>
+            <button onclick="deleteRevision(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs" style="color:var(--red)">Delete</button>
+          </div>
+        </div>`).join('');
+      el.innerHTML = `
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div>
+            <p class="font-display text-lg mb-1" style="color:var(--ink)">Issued revisions</p>
+            <p class="text-sm" style="color:var(--ink-soft)">Frozen copies of the document (e.g. what the client received), including photos.</p>
+          </div>
+          <button onclick="issueRevision()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Issue new revision</button>
+        </div>
+        <div class="card p-4">
+          ${rows ? `<div class="divide-y" style="border-color:var(--line)">${rows}</div>` : `<p class="text-sm" style="color:var(--ink-soft)">No revisions issued yet.</p>`}
+        </div>`;
+    }
+
+    async function issueRevision() {
+      const note = prompt('Issue the document as it stands now as a new revision.\n\nOptional note (e.g. "Issued to client for approval"):', '');
+      if (note === null) return;
+      try {
+        const rev = await api(`/api/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify({ note }) });
+        toast(rev.label + ' issued');
+      } catch (err) { toast(err.message || 'Could not issue revision'); return; }
+      refreshRooms();
+    }
+
+    async function restoreRevision(revId) {
+      const rev = revisions.find(r => r.id === revId);
+      if (!rev) return;
+      if (!confirm(`Restore ${rev.label}?\n\nThe current rooms and selections will be replaced with those from ${rev.label}. The current document is saved automatically as a new revision first, so you can undo this. Links to library items are not restored.`)) return;
+      try {
+        const out = await api(`/api/revisions/${revId}/restore`, { method: 'POST' });
+        toast(out.backup ? `Restored ${rev.label} (previous version saved as ${out.backup.label})` : `Restored ${rev.label}`);
+      } catch (err) { toast(err.message || 'Restore failed'); return; }
+      refreshRooms();
+    }
+
+    async function deleteRevision(revId) {
+      const rev = revisions.find(r => r.id === revId);
+      if (!rev || !confirm(`Permanently delete ${rev.label}? This cannot be undone.`)) return;
+      await api(`/api/revisions/${revId}`, { method: 'DELETE' });
+      toast(rev.label + ' deleted');
+      refreshRooms();
+    }
+
+    async function openCompare(revId) {
+      const rev = revisions.find(r => r.id === revId);
+      let d;
+      try { d = await api(`/api/revisions/${revId}/compare`); } catch (err) { toast(err.message || 'Compare failed'); return; }
+      const item = i => `<li>${esc(i.title)} <span style="color:var(--ink-soft)">(${esc(i.room)})</span></li>`;
+      const fmt = (field, v) => v == null ? '<em>empty</em>' : esc(field === 'cost' ? money(v) : v);
+      document.getElementById('sync-title').textContent = `${d.from} compared with ${d.to.toLowerCase()}`;
+      const none = !d.added.length && !d.removed.length && !d.changed.length;
+      document.getElementById('sync-body').innerHTML = none
+        ? `<p>No differences: the current document matches ${esc(d.from)}.</p>`
+        : `
+          ${d.added.length ? `<p class="font-semibold mt-1">Added since ${esc(d.from)} (${d.added.length})</p><ul class="list-disc pl-5 mb-2">${d.added.map(item).join('')}</ul>` : ''}
+          ${d.removed.length ? `<p class="font-semibold mt-1">Removed since ${esc(d.from)} (${d.removed.length})</p><ul class="list-disc pl-5 mb-2">${d.removed.map(item).join('')}</ul>` : ''}
+          ${d.changed.length ? `<p class="font-semibold mt-1">Changed (${d.changed.length})</p>${d.changed.map(c => `<div class="mb-2"><p>${esc(c.title)} <span style="color:var(--ink-soft)">(${esc(c.room)})</span></p><ul class="list-disc pl-5" style="color:var(--ink-soft)">${c.changes.map(x => `<li>${esc(x.label)}: ${fmt(x.field, x.from)} &rarr; <strong style="color:var(--ink)">${fmt(x.field, x.to)}</strong></li>`).join('')}</ul></div>`).join('')}` : ''}
+          <p style="color:var(--ink-soft)">${d.unchanged} other selection${d.unchanged === 1 ? '' : 's'} unchanged. Items are matched by room and title.</p>`;
+      document.getElementById('sync-actions').innerHTML = `<button type="button" onclick="closeSyncModal()" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Close</button>`;
+      document.getElementById('sync-modal-backdrop').classList.remove('hidden');
     }
 
     function openForm() {

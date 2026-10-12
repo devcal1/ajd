@@ -40,6 +40,12 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
+  let revision = null;
+  if (req.query.revision) {
+    revision = db.prepare('SELECT id, label FROM document_revisions WHERE id = ? AND project_id = ?').get(req.query.revision, project.id);
+    if (!revision) return res.status(404).json({ error: 'Revision not found' });
+  }
+
   const executablePath = findBrowserExecutable();
   if (!executablePath) {
     return res.status(500).json({
@@ -58,7 +64,7 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     // Umbrel's app_proxy (or any reverse proxy) that Host header points at
     // a public domain/port the container may not be able to reach itself.
     const port = process.env.PORT || 3000;
-    await page.goto(`http://127.0.0.1:${port}/document-print.html?id=${req.params.id}${req.query.group === 'supplier' ? '&group=supplier' : ''}`, { waitUntil: 'networkidle0' });
+    await page.goto(`http://127.0.0.1:${port}/document-print.html?id=${req.params.id}${req.query.group ? `&group=${encodeURIComponent(req.query.group)}` : ''}${revision ? `&revision=${revision.id}` : ''}`, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -76,7 +82,7 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     });
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}${req.query.group === 'supplier' ? '-by-supplier' : ''}-design-document.pdf"`
+      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}${revision ? `-${slugifyFilename(revision.label)}` : ''}${req.query.group === 'supplier' ? '-by-supplier' : ''}-design-document.pdf"`
     });
     // page.pdf() returns a Uint8Array, not a Buffer instance — express's
     // res.send would otherwise fail Buffer.isBuffer() and JSON-serialize it.
