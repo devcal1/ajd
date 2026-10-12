@@ -149,8 +149,8 @@ iteration loop for this app the way there was for the retired `ajd.html`
   `tenon-ajd-design-manager/umbrel-app.yml` to match — the store's README has
   the exact steps. The app's id (`tenon-ajd-design-manager`) is permanent:
   Umbrel treats a change as uninstall-and-reinstall, which deletes the data
-  directory. The old `umbrel-app-store/` folder in this repo is superseded and
-  carries a notice saying so; it is safe to delete.
+  directory. An earlier `umbrel-app-store/` folder in this repo was removed on
+  2026-10-12; don't recreate a store inside this repo.
 
 ## Auth
 
