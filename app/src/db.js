@@ -133,6 +133,25 @@ const MIGRATIONS = [
       // ensureSettingsSeeded for why the distinction matters.
       db.exec(`ALTER TABLE settings ADD COLUMN password_source TEXT NOT NULL DEFAULT 'env'`);
     }
+  },
+  {
+    id: '007_selection_library_snapshot',
+    up() {
+      // JSON copy of the linked library item's spec fields as of the last import/refresh, so a
+      // later library edit can be detected. Existing linked selections are snapshotted from the
+      // library's current values, i.e. they start out "up to date".
+      db.exec(`
+        ALTER TABLE document_selections ADD COLUMN library_snapshot TEXT;
+        UPDATE document_selections
+        SET library_snapshot = (
+          SELECT json_object('title', l.title, 'category', l.category, 'supplier', l.supplier,
+                             'sku', l.sku, 'dimensions', l.dimensions, 'finish', l.finish,
+                             'cost', l.cost, 'imagePath', l.image_path)
+          FROM library_items l WHERE l.id = document_selections.library_item_id
+        )
+        WHERE library_item_id IS NOT NULL;
+      `);
+    }
   }
 ];
 

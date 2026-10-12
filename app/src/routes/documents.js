@@ -25,8 +25,57 @@ function deleteUpload(imagePath) {
   fs.unlink(path.join(UPLOADS_DIR, imagePath), () => {});
 }
 
+const SYNC_FIELDS = [
+  { key: 'title', label: 'Title' },
+  { key: 'category', label: 'Category' },
+  { key: 'supplier', label: 'Supplier' },
+  { key: 'sku', label: 'SKU' },
+  { key: 'dimensions', label: 'Dimensions' },
+  { key: 'finish', label: 'Finish' },
+  { key: 'cost', label: 'Cost' }
+];
+
+function snapshotOf(lib) {
+  const snap = { imagePath: lib.image_path || null };
+  SYNC_FIELDS.forEach(f => { snap[f.key] = lib[f.key] == null ? null : lib[f.key]; });
+  return JSON.stringify(snap);
+}
+
+function sameValue(a, b) {
+  return (a == null || a === '' ? null : a) === (b == null || b === '' ? null : b);
+}
+
+// Compares a selection with its library item. status: 'none' (never linked), 'current',
+// 'changed' (library differs from what was imported/last refreshed) or 'removed'
+// (library item deleted). diff lists what "Update from library" would change.
+function libraryState(row) {
+  if (!row.library_snapshot) return { status: 'none', diff: [] };
+  if (!row.library_item_id) return { status: 'removed', diff: [] };
+  const lib = db.prepare('SELECT * FROM library_items WHERE id = ?').get(row.library_item_id);
+  if (!lib) return { status: 'removed', diff: [] };
+  const snap = JSON.parse(row.library_snapshot);
+  const photoChanged = (lib.image_path || null) !== (snap.imagePath || null);
+  const changed = photoChanged || SYNC_FIELDS.some(f => !sameValue(lib[f.key], snap[f.key]));
+  if (!changed) return { status: 'current', diff: [] };
+  const diff = SYNC_FIELDS
+    .filter(f => !sameValue(lib[f.key], row[f.key]))
+    .map(f => ({ field: f.key, label: f.label, mine: row[f.key] == null ? null : row[f.key], library: lib[f.key] == null ? null : lib[f.key] }));
+  if (photoChanged) {
+    diff.push({
+      field: 'image',
+      label: 'Photo',
+      mine: row.image_path ? 'Current photo' : null,
+      library: lib.image_path ? 'Library photo' : null
+    });
+  }
+  return { status: 'changed', diff };
+}
+
 function serializeSelection(row) {
+  const state = libraryState(row);
   return {
+    libraryStatus: state.status,
+    libraryDiff: state.diff,
     id: row.id,
     roomId: row.room_id,
     libraryItemId: row.library_item_id,
@@ -142,12 +191,13 @@ router.post('/api/rooms/:roomId/selections', upload.single('image'), (req, res) 
     return res.status(400).json({ error: 'Title is required' });
   }
   const imagePath = req.file ? req.file.filename : null;
+  const lib = data.libraryItemId ? db.prepare('SELECT * FROM library_items WHERE id = ?').get(data.libraryItemId) : null;
   const result = db.prepare(`
     INSERT INTO document_selections
-      (room_id, library_item_id, title, category, supplier, sku, dimensions, finish, cost, qty, status, notes, image_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (room_id, library_item_id, library_snapshot, title, category, supplier, sku, dimensions, finish, cost, qty, status, notes, image_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    req.params.roomId, data.libraryItemId, data.title, data.category, data.supplier, data.sku,
+    req.params.roomId, lib ? lib.id : null, lib ? snapshotOf(lib) : null, data.title, data.category, data.supplier, data.sku,
     data.dimensions, data.finish, data.cost, data.qty, data.status, data.notes, imagePath
   );
   const row = db.prepare('SELECT * FROM document_selections WHERE id = ?').get(result.lastInsertRowid);
@@ -173,17 +223,79 @@ router.put('/api/selections/:id', upload.single('image'), (req, res) => {
     deleteUpload(existing.image_path);
     imagePath = null;
   }
+  // Re-linking to a different library item takes a fresh snapshot; the same link keeps its
+  // snapshot (so editing a selection never hides a pending library change); a deleted library
+  // item keeps its snapshot so the "removed" state survives.
+  let libraryItemId = existing.library_item_id;
+  let snapshot = existing.library_snapshot;
+  if (data.libraryItemId && data.libraryItemId !== existing.library_item_id) {
+    const lib = db.prepare('SELECT * FROM library_items WHERE id = ?').get(data.libraryItemId);
+    libraryItemId = lib ? lib.id : null;
+    snapshot = lib ? snapshotOf(lib) : null;
+  } else if (!data.libraryItemId && existing.library_item_id) {
+    libraryItemId = null;
+    snapshot = null;
+  }
   db.prepare(`
     UPDATE document_selections
-    SET library_item_id = ?, title = ?, category = ?, supplier = ?, sku = ?, dimensions = ?, finish = ?,
+    SET library_item_id = ?, library_snapshot = ?, title = ?, category = ?, supplier = ?, sku = ?, dimensions = ?, finish = ?,
         cost = ?, qty = ?, status = ?, notes = ?, image_path = ?, updated_at = datetime('now')
     WHERE id = ?
   `).run(
-    data.libraryItemId, data.title, data.category, data.supplier, data.sku, data.dimensions, data.finish,
+    libraryItemId, snapshot, data.title, data.category, data.supplier, data.sku, data.dimensions, data.finish,
     data.cost, data.qty, data.status, data.notes, imagePath, req.params.id
   );
   const row = db.prepare('SELECT * FROM document_selections WHERE id = ?').get(req.params.id);
   res.json(serializeSelection(row));
+});
+
+// Resolve a "library item changed" warning. action: 'update' copies the library's spec fields
+// (and photo) into the selection; 'keep' accepts the selection as-is; 'dismiss' clears the
+// "library item deleted" notice. All three refresh/clear the snapshot. qty, status and notes
+// are never touched.
+router.post('/api/selections/:id/library-sync', (req, res) => {
+  const row = db.prepare('SELECT * FROM document_selections WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Selection not found' });
+  const action = req.body && req.body.action;
+  const lib = row.library_item_id ? db.prepare('SELECT * FROM library_items WHERE id = ?').get(row.library_item_id) : null;
+
+  if (action === 'dismiss') {
+    if (lib) return res.status(400).json({ error: 'Library item still exists' });
+    db.prepare(`UPDATE document_selections SET library_snapshot = NULL WHERE id = ?`).run(row.id);
+  } else if (action === 'keep' || action === 'update') {
+    if (!lib) return res.status(400).json({ error: 'Library item no longer exists' });
+    if (action === 'keep') {
+      db.prepare(`UPDATE document_selections SET library_snapshot = ? WHERE id = ?`).run(snapshotOf(lib), row.id);
+    } else {
+      const snap = row.library_snapshot ? JSON.parse(row.library_snapshot) : {};
+      let imagePath = row.image_path;
+      if ((lib.image_path || null) !== (snap.imagePath || null)) {
+        if (lib.image_path) {
+          // Copy rather than share the file, so deleting either record can't orphan the other.
+          const ext = path.extname(lib.image_path);
+          const copy = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+          try {
+            fs.copyFileSync(path.join(UPLOADS_DIR, lib.image_path), path.join(UPLOADS_DIR, copy));
+            deleteUpload(row.image_path);
+            imagePath = copy;
+          } catch (e) { /* library file missing: leave the selection's photo alone */ }
+        } else {
+          deleteUpload(row.image_path);
+          imagePath = null;
+        }
+      }
+      db.prepare(`
+        UPDATE document_selections
+        SET title = ?, category = ?, supplier = ?, sku = ?, dimensions = ?, finish = ?, cost = ?,
+            image_path = ?, library_snapshot = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(lib.title, lib.category, lib.supplier, lib.sku, lib.dimensions, lib.finish, lib.cost,
+        imagePath, snapshotOf(lib), row.id);
+    }
+  } else {
+    return res.status(400).json({ error: 'Unknown action' });
+  }
+  res.json(serializeSelection(db.prepare('SELECT * FROM document_selections WHERE id = ?').get(row.id)));
 });
 
 router.delete('/api/selections/:id', (req, res) => {

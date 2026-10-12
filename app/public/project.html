@@ -179,6 +179,14 @@
     </div>
   </div>
 
+  <div id="sync-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeSyncModal()">
+    <div class="card modal-body p-6 w-full max-w-lg">
+      <h2 id="sync-title" class="font-display text-xl mb-2" style="color:var(--ink)"></h2>
+      <div id="sync-body" class="text-sm"></div>
+      <div id="sync-actions" class="flex items-center justify-end gap-2 flex-wrap pt-4"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <script src="/js/shared.js"></script>
   <script>
@@ -305,6 +313,8 @@
             <div class="flex items-center gap-2 flex-wrap">
               <p class="font-semibold text-sm" style="color:var(--ink)">${esc(sel.title)}</p>
               <span class="tag ${statusTagClass(sel.status)}">${statusLabelSel(sel.status)}</span>
+              ${sel.libraryStatus === 'changed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag" style="cursor:pointer" title="The library item has changed since this was added">Library updated</button>` : ''}
+              ${sel.libraryStatus === 'removed' ? `<button onclick="openSyncModal(${room.id}, ${sel.id})" class="tag" style="cursor:pointer" title="The library item was deleted">Library item deleted</button>` : ''}
             </div>
             <p class="text-xs truncate" style="color:var(--ink-soft)">${esc(meta) || '&nbsp;'}</p>
             ${sel.notes ? `<p class="text-xs italic truncate" style="color:var(--ink-soft)">${esc(sel.notes)}</p>` : ''}
@@ -544,6 +554,54 @@
       toast('Selection saved');
       refreshRooms();
     });
+
+    function syncValue(field, v) {
+      if (v == null || v === '') return '<em>empty</em>';
+      return field === 'cost' ? esc(money(v)) : esc(v);
+    }
+
+    function closeSyncModal() {
+      document.getElementById('sync-modal-backdrop').classList.add('hidden');
+    }
+
+    function openSyncModal(roomId, selId) {
+      const room = rooms.find(r => r.id === roomId);
+      const sel = room && room.selections.find(s => s.id === selId);
+      if (!sel) return;
+      const title = document.getElementById('sync-title');
+      const body = document.getElementById('sync-body');
+      const actions = document.getElementById('sync-actions');
+      const btn = (label, cls, fn) => `<button type="button" onclick="${fn}" class="${cls} px-4 py-2 rounded-lg text-sm ${cls === 'btn-primary' ? 'font-semibold' : ''}">${label}</button>`;
+      if (sel.libraryStatus === 'removed') {
+        title.textContent = 'Library item deleted';
+        body.innerHTML = `<p style="color:var(--ink-soft)">The product library item "${esc(sel.title)}" was copied from has since been deleted. This selection keeps all of its own details, so nothing here needs to change. Dismiss to remove the notice.</p>`;
+        actions.innerHTML = btn('Cancel', 'btn-ghost', 'closeSyncModal()') + btn('Dismiss notice', 'btn-primary', `resolveSync(${sel.id}, 'dismiss')`);
+      } else {
+        title.textContent = 'Update from library';
+        const rows = sel.libraryDiff.map(d => d.field === 'image'
+          ? `<tr><td class="py-1 pr-3 font-semibold align-top">${esc(d.label)}</td><td class="py-1" colspan="2">${d.library ? 'The library photo has changed. It will <strong>replace</strong> this selection\'s photo.' : 'The library photo was removed. This selection\'s photo will be <strong>removed</strong>.'}</td></tr>`
+          : `<tr><td class="py-1 pr-3 font-semibold align-top">${esc(d.label)}</td><td class="py-1 pr-3" style="color:var(--ink-soft)">${syncValue(d.field, d.mine)}</td><td class="py-1">&rarr; <strong>${syncValue(d.field, d.library)}</strong></td></tr>`).join('');
+        body.innerHTML = `
+          <p class="mb-3" style="color:var(--ink-soft)">The library item for "${esc(sel.title)}" has been edited since it was added to this project. Updating will overwrite this selection's details with the library's:</p>
+          ${rows ? `<table class="w-full mb-3"><thead><tr class="text-left text-xs" style="color:var(--ink-soft)"><th class="pr-3 font-medium">Field</th><th class="pr-3 font-medium">Now in this project</th><th class="font-medium">Will become</th></tr></thead><tbody>${rows}</tbody></table>`
+                 : `<p class="mb-3">None of this selection's details differ from the library, so nothing visible would change.</p>`}
+          <p style="color:var(--ink-soft)">Not changed: quantity, status and notes. Choose <strong>Keep mine</strong> to leave this selection as it is and clear the warning until the library changes again.</p>`;
+        actions.innerHTML = btn('Cancel', 'btn-ghost', 'closeSyncModal()') + btn('Keep mine', 'btn-ghost', `resolveSync(${sel.id}, 'keep')`) + btn('Update from library', 'btn-primary', `resolveSync(${sel.id}, 'update')`);
+      }
+      document.getElementById('sync-modal-backdrop').classList.remove('hidden');
+    }
+
+    async function resolveSync(selId, action) {
+      try {
+        await api(`/api/selections/${selId}/library-sync`, { method: 'POST', body: JSON.stringify({ action }) });
+      } catch (err) {
+        toast(err.message || 'Update failed');
+        return;
+      }
+      closeSyncModal();
+      toast(action === 'update' ? 'Updated from library' : action === 'keep' ? 'Kept as is' : 'Notice dismissed');
+      refreshRooms();
+    }
 
     async function removeSelection(selId) {
       if (!confirm('Delete this selection? This cannot be undone.')) return;
