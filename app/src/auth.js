@@ -17,8 +17,8 @@ const sessionMiddleware = session({
 
 function checkPassword(candidate) {
   const row = db.prepare('SELECT password_hash FROM settings WHERE id = 1').get();
-  if (!row) return false;
-  return bcrypt.compareSync(candidate || '', row.password_hash);
+  if (!row || typeof candidate !== 'string') return false;
+  return bcrypt.compareSync(candidate, row.password_hash);
 }
 
 function requireAuth(req, res, next) {

@@ -1,24 +1,12 @@
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
-const multer = require('multer');
 const { db, UPLOADS_DIR } = require('../db');
+const { assertFlat, parseMoney, parseQty, parseChoice } = require('../validate');
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename(req, file, cb) {
-      const ext = path.extname(file.originalname || '').slice(0, 10);
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-    }
-  }),
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    cb(null, /^image\//.test(file.mimetype));
-  }
-});
+const { imageUpload: upload } = require('../uploads');
 
 function deleteUpload(imagePath) {
   if (!imagePath) return;
@@ -115,12 +103,24 @@ function selectionFields(body) {
     sku: body.sku ? String(body.sku).trim() : null,
     dimensions: body.dimensions ? String(body.dimensions).trim() : null,
     finish: body.finish ? String(body.finish).trim() : null,
-    cost: body.cost !== undefined && body.cost !== '' ? Number(body.cost) : null,
-    qty: body.qty !== undefined && body.qty !== '' ? Math.max(1, parseInt(body.qty, 10) || 1) : 1,
-    status: body.status ? String(body.status).trim() : 'proposed',
+    cost: parseMoney(body.cost, 'Cost'),
+    qty: parseQty(body.qty),
+    status: parseChoice(body.status, ['proposed', 'approved', 'rejected'], 'proposed', 'Status'),
     notes: body.notes ? String(body.notes).trim() : null,
     libraryItemId: body.libraryItemId ? Number(body.libraryItemId) : null
   };
+}
+
+
+// Validate the body; on failure also remove the file multer already wrote for this request.
+function parseBody(parser, req) {
+  try {
+    assertFlat(req.body);
+    return parser(req.body || {});
+  } catch (err) {
+    if (req.file) deleteUpload(req.file.filename);
+    throw err;
+  }
 }
 
 function getProjectOr404(projectId, res) {
@@ -186,7 +186,7 @@ router.post('/api/rooms/:roomId/selections', upload.single('image'), (req, res) 
     if (req.file) deleteUpload(req.file.filename);
     return;
   }
-  const data = selectionFields(req.body);
+  const data = parseBody(selectionFields, req);
   if (!data.title) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Title is required' });
@@ -211,7 +211,7 @@ router.put('/api/selections/:id', upload.single('image'), (req, res) => {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(404).json({ error: 'Selection not found' });
   }
-  const data = selectionFields(req.body);
+  const data = parseBody(selectionFields, req);
   if (!data.title) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Title is required' });

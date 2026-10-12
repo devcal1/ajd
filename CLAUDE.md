@@ -389,6 +389,31 @@ code, not decisions.
    2026-10-12**, committed locally, not yet pushed/released. See "Library change
    warning" above.
 
+## Hardening notes (bug-fix pass, 2026-10-12)
+
+Found by a multi-agent audit (code review + black-box testing); things a future change must not undo:
+- **Backup names are validated by an exact timestamp regex** (`backup.js` `BACKUP_NAME`). A looser
+  `path.basename` check let `..` through, which resolved to DATA_DIR and made a restore delete the
+  live database. Restore now stages the backup next to the live files and swaps with renames; a
+  failure while staging leaves live data untouched and does not restart the process.
+- **Async route handlers must not throw unhandled** (Express 4 ignores them and Node then exits).
+  `clip.js` and `pdf.js` wrap handlers in `safely()`; `index.js` has a JSON error middleware and an
+  `unhandledRejection` logger. Query/body values may be arrays/objects: `assertFlat()` (`validate.js`)
+  rejects nested bodies, and routes only accept plain strings from `req.query`.
+- **Clipper SSRF guard** (`clip.js`): IPv6 is judged by bytes (`ipv6ToBytes`), embedded IPv4
+  (mapped/NAT64/6to4) by the IPv4 rules, only 2000::/3 allowed; `guardedLookup` plus a
+  `socket.remoteAddress` check backstops IP-literal hosts. URL parsing rewrites `::ffff:127.0.0.1` to hex,
+  which a text regex missed.
+- **PDF export** sets the session cookie only for the loopback origin (`page.setCookie`), never as an
+  extra header, so it is not sent to the Tailwind/Google Fonts CDNs.
+- **Input validation** lives in `src/validate.js` (`parseMoney`, `parseQty`, `parseChoice`): costs/budget
+  0..1e9, qty 1..100000, status enums; bad input is a 400, never a silent null.
+- **Uploads** (`src/uploads.js`): extension comes from the MIME type, not the filename; SVG is rejected.
+- **Revision numbers never repeat**: `projects.revision_seq` (migration 011) is a high-water mark.
+- Frontend: `guard()` (double-submit), Escape/backdrop-drag handling and `money()` (shows cents when
+  present, en-AU) live in `js/shared.js`. Project-page totals exclude rejected selections, matching the
+  client document.
+
 ## Working conventions for this project
 
 - **Project page layout** (after the 2026-10-12 Fable review): the header card has only Edit project +

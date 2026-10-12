@@ -1,24 +1,12 @@
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
-const multer = require('multer');
 const { db, UPLOADS_DIR } = require('../db');
+const { assertFlat, parseMoney, parseChoice } = require('../validate');
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename(req, file, cb) {
-      const ext = path.extname(file.originalname || '').slice(0, 10);
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-    }
-  }),
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    cb(null, /^image\//.test(file.mimetype));
-  }
-});
+const { imageUpload: upload } = require('../uploads');
 
 const DEFAULT_PDF_SETTINGS = {
   showCosts: true,
@@ -67,8 +55,8 @@ function fields(body) {
   return {
     name: String(body.name || '').trim(),
     clientName: body.clientName ? String(body.clientName).trim() : null,
-    status: body.status ? String(body.status).trim() : 'active',
-    budget: body.budget !== undefined && body.budget !== '' ? Number(body.budget) : null,
+    status: parseChoice(body.status, ['active', 'on hold', 'complete'], 'active', 'Status'),
+    budget: parseMoney(body.budget, 'Budget'),
     notes: body.notes ? String(body.notes).trim() : null
   };
 }
@@ -76,6 +64,18 @@ function fields(body) {
 function deleteUpload(imagePath) {
   if (!imagePath) return;
   fs.unlink(path.join(UPLOADS_DIR, imagePath), () => {});
+}
+
+
+// Validate the body; on failure also remove the file multer already wrote for this request.
+function parseBody(parser, req) {
+  try {
+    assertFlat(req.body);
+    return parser(req.body || {});
+  } catch (err) {
+    if (req.file) deleteUpload(req.file.filename);
+    throw err;
+  }
 }
 
 router.get('/api/projects', (req, res) => {
@@ -93,7 +93,7 @@ router.get('/api/projects/:id', (req, res) => {
 });
 
 router.post('/api/projects', upload.single('coverImage'), (req, res) => {
-  const data = fields(req.body);
+  const data = parseBody(fields, req);
   if (!data.name) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Name is required' });
@@ -113,7 +113,7 @@ router.put('/api/projects/:id', upload.single('coverImage'), (req, res) => {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(404).json({ error: 'Not found' });
   }
-  const data = fields(req.body);
+  const data = parseBody(fields, req);
   if (!data.name) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Name is required' });
@@ -143,7 +143,7 @@ router.put('/api/projects/:id', upload.single('coverImage'), (req, res) => {
 router.post('/api/projects/:id/archive', (req, res) => {
   const existing = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  const archive = req.body && req.body.archive !== false;
+  const archive = !(req.body && (req.body.archive === false || req.body.archive === 'false'));
   db.prepare(`
     UPDATE projects SET archived_at = ?, updated_at = datetime('now') WHERE id = ?
   `).run(archive ? new Date().toISOString() : null, req.params.id);

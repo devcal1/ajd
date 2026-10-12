@@ -36,13 +36,25 @@ function slugifyFilename(name) {
   return String(name || 'design-document').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'design-document';
 }
 
-router.get('/api/projects/:id/document.pdf', async (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+// Express 4 does not catch rejections from async handlers, and an unhandled rejection kills the
+// process, so anything that escapes the handler's own try/catch is turned into a 500 here.
+const safely = handler => (req, res) => {
+  Promise.resolve(handler(req, res)).catch(err => {
+    console.error('[pdf] unexpected error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'PDF generation failed' });
+  });
+};
+
+router.get('/api/projects/:id/document.pdf', safely(async (req, res) => {
+  const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(String(req.params.id));
   if (!project) return res.status(404).json({ error: 'Project not found' });
 
+  // Query values can arrive as arrays/objects (?revision[]=1); only plain strings are accepted.
+  const group = req.query.group === 'supplier' ? 'supplier' : req.query.group === 'room' ? 'room' : '';
   let revision = null;
-  if (req.query.revision) {
-    revision = db.prepare('SELECT id, label FROM document_revisions WHERE id = ? AND project_id = ?').get(req.query.revision, project.id);
+  if (req.query.revision !== undefined && req.query.revision !== '') {
+    const revId = typeof req.query.revision === 'string' ? req.query.revision : '';
+    revision = db.prepare('SELECT id, label FROM document_revisions WHERE id = ? AND project_id = ?').get(revId, project.id);
     if (!revision) return res.status(404).json({ error: 'Revision not found' });
   }
 
@@ -57,14 +69,19 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
   try {
     browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
-    if (req.headers.cookie) {
-      await page.setExtraHTTPHeaders({ cookie: req.headers.cookie });
-    }
     // Navigate via the app's own loopback port, not req.get('host') — behind
     // Umbrel's app_proxy (or any reverse proxy) that Host header points at
     // a public domain/port the container may not be able to reach itself.
     const port = process.env.PORT || 3000;
-    await page.goto(`http://127.0.0.1:${port}/document-print.html?id=${req.params.id}${req.query.group ? `&group=${encodeURIComponent(req.query.group)}` : ''}${revision ? `&revision=${revision.id}` : ''}`, { waitUntil: 'networkidle0' });
+    const origin = `http://127.0.0.1:${port}`;
+    // Scope the session cookie to the loopback origin. (An extra *header* would be sent to every
+    // host the page loads, including the Tailwind and Google Fonts CDNs.)
+    const cookies = String(req.headers.cookie || '').split(';').map(c => c.trim()).filter(Boolean).map(c => {
+      const i = c.indexOf('=');
+      return { name: c.slice(0, i), value: c.slice(i + 1), url: origin };
+    }).filter(c => c.name);
+    if (cookies.length) await page.setCookie(...cookies);
+    await page.goto(`${origin}/document-print.html?id=${project.id}${group ? `&group=${group}` : ''}${revision ? `&revision=${revision.id}` : ''}`, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
@@ -82,7 +99,7 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     });
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}${revision ? `-${slugifyFilename(revision.label)}` : ''}${req.query.group === 'supplier' ? '-by-supplier' : ''}-design-document.pdf"`
+      'Content-Disposition': `attachment; filename="${slugifyFilename(project.name)}${revision ? `-${slugifyFilename(revision.label)}` : ''}${group === 'supplier' ? '-by-supplier' : ''}-design-document.pdf"`
     });
     // page.pdf() returns a Uint8Array, not a Buffer instance — express's
     // res.send would otherwise fail Buffer.isBuffer() and JSON-serialize it.
@@ -91,8 +108,8 @@ router.get('/api/projects/:id/document.pdf', async (req, res) => {
     console.error('[pdf] generation failed:', err.message);
     res.status(500).json({ error: 'PDF generation failed' });
   } finally {
-    if (browser) await browser.close();
+    if (browser) await browser.close().catch(() => {});
   }
-});
+}));
 
 module.exports = router;

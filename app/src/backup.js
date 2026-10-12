@@ -40,7 +40,7 @@ function dirSize(dir) {
 function listBackups() {
   if (!fs.existsSync(BACKUPS_DIR)) return [];
   return fs.readdirSync(BACKUPS_DIR)
-    .filter(name => fs.statSync(path.join(BACKUPS_DIR, name)).isDirectory())
+    .filter(name => BACKUP_NAME.test(name) && fs.existsSync(path.join(BACKUPS_DIR, name, 'ajd.db')))
     .sort() // ISO-ish timestamp names sort chronologically
     .reverse()
     .map(name => ({ name, bytes: dirSize(path.join(BACKUPS_DIR, name)) }));
@@ -64,9 +64,15 @@ function runBackup() {
   fs.mkdirSync(BACKUPS_DIR, { recursive: true });
   const dir = path.join(BACKUPS_DIR, timestamp());
   fs.mkdirSync(dir, { recursive: true });
-  db.prepare('VACUUM INTO ?').run(path.join(dir, 'ajd.db'));
-  if (fs.existsSync(UPLOADS_DIR)) {
-    fs.cpSync(UPLOADS_DIR, path.join(dir, 'uploads'), { recursive: true });
+  try {
+    db.prepare('VACUUM INTO ?').run(path.join(dir, 'ajd.db'));
+    if (fs.existsSync(UPLOADS_DIR)) {
+      fs.cpSync(UPLOADS_DIR, path.join(dir, 'uploads'), { recursive: true });
+    }
+  } catch (err) {
+    // A half-written backup must not count against retention or show up as restorable.
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
   }
   console.log(`[backup] wrote ${dir}`);
   prune();
@@ -79,12 +85,20 @@ function safeRun() {
   } catch (err) {
     console.error('[backup] failed:', err.message);
   }
+  try {
+    // Housekeeping on the same schedule: expired sessions are otherwise never removed.
+    db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+  } catch (err) {
+    console.error('[sessions] sweep failed:', err.message);
+  }
 }
 
 function msUntilNextRun() {
   const next = new Date();
   next.setHours(BACKUP_HOUR, 0, 0, 0);
-  if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+  // The 1s margin matters: setTimeout can fire a hair early, and without it that wake-up would
+  // still see "02:00 is in the future" and immediately run a second backup.
+  if (next.getTime() <= Date.now() + 1000) next.setDate(next.getDate() + 1);
   return next.getTime() - Date.now();
 }
 
@@ -113,8 +127,13 @@ function startSchedule() {
   console.log(`[backup] nightly at ${BACKUP_HOUR}:00 local time, keeping last ${RETENTION}`);
 }
 
+// Names are exactly what timestamp() produces. A looser "basename" check lets '..' through,
+// which resolves to DATA_DIR itself (it contains ajd.db), so a crafted restore would delete
+// the live database.
+const BACKUP_NAME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
+
 function assertSafeName(name) {
-  if (typeof name !== 'string' || !name || path.basename(name) !== name) {
+  if (typeof name !== 'string' || !BACKUP_NAME.test(name)) {
     throw new Error('Invalid backup name');
   }
   const dir = path.join(BACKUPS_DIR, name);
@@ -139,21 +158,32 @@ function backupExists(name) {
 // no safe way to hot-swap the DB file under the one open node:sqlite
 // connection every route shares, so a deliberate restart is the mechanism,
 // not a bug -- the API response tells the caller to expect it.
+//
+// Everything that can fail (reading and copying the backup) happens BEFORE the live files are
+// touched: the backup is staged next to them, then swapped in with renames. A failure while
+// staging throws an error with .untouched = true, meaning nothing live was changed.
 function restoreBackup(name) {
   const dir = assertSafeName(name);
+  const stagedDb = DB_FILE + '.restoring';
+  const stagedUploads = UPLOADS_DIR + '.restoring';
+  try {
+    fs.rmSync(stagedDb, { force: true });
+    fs.rmSync(stagedUploads, { recursive: true, force: true });
+    fs.copyFileSync(path.join(dir, 'ajd.db'), stagedDb);
+    const backupUploads = path.join(dir, 'uploads');
+    if (fs.existsSync(backupUploads)) fs.cpSync(backupUploads, stagedUploads, { recursive: true });
+    else fs.mkdirSync(stagedUploads, { recursive: true });
+  } catch (err) {
+    fs.rmSync(stagedDb, { force: true });
+    fs.rmSync(stagedUploads, { recursive: true, force: true });
+    err.untouched = true;
+    throw err;
+  }
   db.close();
-  for (const suffix of ['', '-wal', '-shm']) {
-    const f = DB_FILE + suffix;
-    if (fs.existsSync(f)) fs.rmSync(f);
-  }
-  fs.copyFileSync(path.join(dir, 'ajd.db'), DB_FILE);
+  for (const suffix of ['-wal', '-shm']) fs.rmSync(DB_FILE + suffix, { force: true });
+  fs.renameSync(stagedDb, DB_FILE);
   fs.rmSync(UPLOADS_DIR, { recursive: true, force: true });
-  const backupUploads = path.join(dir, 'uploads');
-  if (fs.existsSync(backupUploads)) {
-    fs.cpSync(backupUploads, UPLOADS_DIR, { recursive: true });
-  } else {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  }
+  fs.renameSync(stagedUploads, UPLOADS_DIR);
   console.log(`[backup] restored ${name} -- exiting for a clean restart`);
 }
 

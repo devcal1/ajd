@@ -188,6 +188,19 @@ const MIGRATIONS = [
         ALTER TABLE document_selections ADD COLUMN source_url TEXT;
       `);
     }
+  },
+  {
+    id: '011_revision_counter',
+    up() {
+      // Per-project high-water mark for revision numbers. MAX(seq)+1 reused a label after the
+      // latest revision was deleted (delete Rev B, issue again -> a different document called
+      // "Rev B"); this counter only ever increases.
+      db.exec(`
+        ALTER TABLE projects ADD COLUMN revision_seq INTEGER NOT NULL DEFAULT 0;
+        UPDATE projects SET revision_seq = COALESCE(
+          (SELECT MAX(seq) FROM document_revisions WHERE project_id = projects.id), 0);
+      `);
+    }
   }
 ];
 

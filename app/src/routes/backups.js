@@ -30,6 +30,9 @@ router.post('/api/backups/:name/restore', (req, res) => {
       restoreBackup(name);
     } catch (err) {
       console.error('[backup] restore failed:', err.message);
+      // Nothing live was touched (the failure was while staging the backup), so keep serving
+      // instead of restarting into a half-restored state.
+      if (err.untouched) return;
     }
     setTimeout(() => process.exit(1), 100);
   });

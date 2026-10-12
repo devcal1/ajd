@@ -46,7 +46,7 @@
     </div>
   </main>
 
-  <div id="modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeForm()">
+  <div id="modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeForm(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-lg">
       <h2 class="font-display text-xl mb-4" style="color:var(--ink)">New project</h2>
       <form id="project-form" class="space-y-3">
@@ -160,7 +160,7 @@
       document.getElementById('modal-backdrop').classList.add('hidden');
     }
 
-    document.getElementById('project-form').addEventListener('submit', async (e) => {
+    document.getElementById('project-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const fd = new FormData();
       fd.append('name', document.getElementById('f-name').value);
@@ -181,7 +181,7 @@
       const created = await res.json();
       closeForm();
       window.location.href = `/project.html?id=${created.id}`;
-    });
+    }));
 
     let searchTimer;
     document.getElementById('search').addEventListener('input', () => {

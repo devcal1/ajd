@@ -32,12 +32,44 @@ function isPrivateIPv4(ip) {
     (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
 }
 
+// IPv6 text -> 16 bytes (null if malformed). The URL parser rewrites "::ffff:127.0.0.1" to the
+// hex form "::ffff:7f00:1", so address checks must work on bytes, not on text patterns.
+function ipv6ToBytes(ip) {
+  let s = String(ip).toLowerCase().split('%')[0];
+  const dotted = s.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const p = dotted[1].split('.').map(Number);
+    if (p.some(n => !(n >= 0 && n <= 255))) return null;
+    s = s.slice(0, -dotted[1].length) + ((p[0] << 8) | p[1]).toString(16) + ':' + ((p[2] << 8) | p[3]).toString(16);
+  }
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? head.length !== 8 : missing < 0) return null;
+  const groups = halves.length === 1 ? head : [...head, ...Array(missing).fill('0'), ...tail];
+  const bytes = [];
+  for (const g of groups) {
+    const n = parseInt(g || '0', 16);
+    if (!(n >= 0 && n <= 0xffff)) return null;
+    bytes.push(n >> 8, n & 255);
+  }
+  return bytes;
+}
+
+// Only public, global-unicast addresses are allowed; anything that embeds an IPv4 address
+// (mapped, NAT64, 6to4) is judged by the embedded address.
 function isPrivateAddress(ip) {
   if (net.isIPv4(ip)) return isPrivateIPv4(ip);
-  const v6 = ip.toLowerCase();
-  const mapped = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIPv4(mapped[1]);
-  return v6 === '::' || v6 === '::1' || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6);
+  const b = ipv6ToBytes(ip);
+  if (!b) return true;
+  const v4 = i => `${b[i]}.${b[i + 1]}.${b[i + 2]}.${b[i + 3]}`;
+  if (b.slice(0, 10).every(x => x === 0) && b[10] === 0xff && b[11] === 0xff) return isPrivateIPv4(v4(12)); // ::ffff:a.b.c.d
+  if (b.slice(0, 12).every(x => x === 0)) return true; // ::, ::1, IPv4-compatible
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && b.slice(4, 12).every(x => x === 0)) return isPrivateIPv4(v4(12)); // NAT64
+  if (b[0] === 0x20 && b[1] === 0x02) return isPrivateIPv4(v4(2)); // 6to4
+  return (b[0] & 0xe0) !== 0x20; // 2000::/3 only
 }
 
 // Validates at connect time (not just before), so a DNS answer that changes between a check
@@ -79,7 +111,12 @@ function request(url, { maxBytes, accept, referer }) {
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return resolve({ redirect: new URL(res.headers.location, url).href });
+        try {
+          return resolve({ redirect: new URL(res.headers.location, url).href });
+        } catch (e) {
+          // a hostile site can send an unparseable Location; throwing here would crash the process
+          return reject(new Error('The site sent an invalid redirect'));
+        }
       }
       const chunks = [];
       let size = 0;
@@ -88,11 +125,21 @@ function request(url, { maxBytes, accept, referer }) {
         if (size > maxBytes) { req.destroy(new Error('That file is too large')); return; }
         chunks.push(chunk);
       });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks), url: url.href }));
+      res.on('end', () => { clearTimeout(deadline); resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks), url: url.href }); });
       res.on('error', reject);
     });
+    // Idle timeout plus an overall deadline, so a slow drip cannot hold the request open.
+    const deadline = setTimeout(() => req.destroy(new Error('The site took too long to respond')), 15000);
     req.setTimeout(10000, () => req.destroy(new Error('The site took too long to respond')));
-    req.on('error', reject);
+    // Backstop to guardedLookup: whatever we actually connected to must be public (IP-literal
+    // hosts skip DNS lookup entirely).
+    req.on('socket', socket => {
+      const check = () => {
+        if (socket.remoteAddress && isPrivateAddress(socket.remoteAddress)) req.destroy(new Error('That address is not allowed'));
+      };
+      if (socket.connecting) socket.once('connect', check); else check();
+    });
+    req.on('error', err => { clearTimeout(deadline); reject(err); });
     req.end();
   });
 }
@@ -110,9 +157,11 @@ async function safeFetch(rawUrl, opts) {
 // ---- Page parsing (the server-side twin of the bookmarklet in library.html) ----
 
 function decodeEntities(s) {
+  // fromCodePoint throws RangeError above U+10FFFF; a hostile "&#99999999;" must not fail the clip
+  const cp = n => (Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '');
   return String(s || '')
-    .replace(/&#(\d+);/g, (m, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (m, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (m, n) => cp(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) => cp(parseInt(n, 16)))
     .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
@@ -145,6 +194,8 @@ function str(v) {
 function parsePrice(raw) {
   let s = String(raw || '').replace(/[^0-9.,]/g, '');
   if (!s) return '';
+  // "1.299" / "1,299" (exactly three digits after a single separator) is a thousands separator.
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, '');
   // "1,299.00" -> 1299.00; "1.299,00" -> 1299.00; "1299,50" -> 1299.50
   const lastDot = s.lastIndexOf('.');
   const lastComma = s.lastIndexOf(',');
@@ -166,7 +217,8 @@ function extractProduct(html, pageUrl) {
   }
   const p = product || {};
   const abs = u => { try { return new URL(u, pageUrl).href; } catch (e) { return ''; } };
-  const offer = Array.isArray(p.offers) ? p.offers[0] : p.offers;
+  const offers = [].concat(p.offers || []);
+  const offer = offers.find(o => o && (o.price || o.lowPrice)) || offers[0];
   const titleTag = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
   const images = [];
   [].concat(p.image || [], metaContent(html, 'og:image'), metaContent(html, 'twitter:image')).forEach(i => {
@@ -197,7 +249,9 @@ router.post('/api/clip/fetch', async (req, res) => {
     }
     res.json(extractProduct(out.body.toString('utf8'), out.url));
   } catch (err) {
-    res.status(400).json({ error: err.message || 'Could not read that page' });
+    // Don't echo raw resolver errors (they include the whole hostname).
+    const unreachable = ['ENOTFOUND', 'EAI_AGAIN', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(err.code);
+    res.status(400).json({ error: unreachable ? 'Could not reach that website' : (err.message || 'Could not read that page') });
   }
 });
 
@@ -226,17 +280,28 @@ function cleanUrl(raw) {
 
 const text = v => (v == null || String(v).trim() === '' ? null : String(v).trim());
 
-router.post('/api/clip/save', async (req, res) => {
+// Express 4 does not catch rejections from async handlers, and on current Node an unhandled
+// rejection kills the process, so every async route goes through this wrapper.
+const safely = handler => (req, res) => {
+  Promise.resolve(handler(req, res)).catch(err => {
+    console.error('[clip] unexpected error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Something went wrong' });
+  });
+};
+
+router.post('/api/clip/save', safely(async (req, res) => {
   const body = req.body || {};
   const title = String(body.title || '').trim();
   if (!title) return res.status(400).json({ error: 'Title is required' });
   const sourceUrl = cleanUrl(body.sourceUrl);
   const cost = body.cost !== undefined && body.cost !== '' && body.cost !== null ? Number(body.cost) : null;
-  if (cost !== null && !Number.isFinite(cost)) return res.status(400).json({ error: 'Cost must be a number' });
+  if (cost !== null && (!Number.isFinite(cost) || cost < 0 || cost > 1e9)) return res.status(400).json({ error: 'Cost must be a number between 0 and 1,000,000,000' });
 
   let room = null;
-  if (body.roomId) {
-    room = db.prepare('SELECT id, project_id FROM document_rooms WHERE id = ?').get(body.roomId);
+  if (body.roomId !== undefined && body.roomId !== null && body.roomId !== '') {
+    const roomId = Number(body.roomId);
+    if (!Number.isInteger(roomId) || roomId < 1) return res.status(400).json({ error: 'Invalid room' });
+    room = db.prepare('SELECT id, project_id FROM document_rooms WHERE id = ?').get(roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
   }
 
@@ -245,14 +310,14 @@ router.post('/api/clip/save', async (req, res) => {
   if (body.imageUrl) {
     try { imagePath = await downloadImage(String(body.imageUrl), sourceUrl); } catch (e) { imageFailed = true; }
   }
-  // The selection gets its own copy of the photo, as every other selection image is its own file.
   let selectionImage = null;
-  if (room && imagePath) {
-    selectionImage = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(imagePath)}`;
-    fs.copyFileSync(path.join(UPLOADS_DIR, imagePath), path.join(UPLOADS_DIR, selectionImage));
-  }
 
   try {
+    // The selection gets its own copy of the photo, as every other selection image is its own file.
+    if (room && imagePath) {
+      selectionImage = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(imagePath)}`;
+      fs.copyFileSync(path.join(UPLOADS_DIR, imagePath), path.join(UPLOADS_DIR, selectionImage));
+    }
     let libraryId;
     let selectionId = null;
     transaction(() => {
@@ -263,7 +328,7 @@ router.post('/api/clip/save', async (req, res) => {
         text(body.finish), cost, text(body.notes), imagePath, sourceUrl).lastInsertRowid;
       if (room) {
         const lib = db.prepare('SELECT * FROM library_items WHERE id = ?').get(libraryId);
-        const qty = Math.max(1, parseInt(body.qty, 10) || 1);
+        const qty = Math.min(100000, Math.max(1, parseInt(body.qty, 10) || 1));
         selectionId = db.prepare(`
           INSERT INTO document_selections
             (room_id, library_item_id, library_snapshot, title, category, supplier, sku, dimensions, finish,
@@ -278,7 +343,7 @@ router.post('/api/clip/save', async (req, res) => {
     [imagePath, selectionImage].forEach(f => { if (f) fs.unlink(path.join(UPLOADS_DIR, f), () => {}); });
     res.status(500).json({ error: 'Could not save the clip' });
   }
-});
+}));
 
 module.exports = router;
 module.exports.isPrivateAddress = isPrivateAddress;

@@ -45,7 +45,7 @@
     </div>
   </main>
 
-  <div id="modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeForm()">
+  <div id="modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeForm(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-lg">
       <h2 id="modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add product</h2>
       <form id="item-form" class="space-y-3">
@@ -237,7 +237,12 @@
 
     async function removeItem(id) {
       if (!confirm('Delete this product? This cannot be undone.')) return;
-      await api(`/api/library/${id}`, { method: 'DELETE' });
+      try {
+        await api(`/api/library/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        toast(err.message || 'Something went wrong');
+        return;
+      }
       toast('Product deleted');
       load();
     }
@@ -253,7 +258,7 @@
       document.getElementById('f-image-name').textContent = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
     });
 
-    document.getElementById('item-form').addEventListener('submit', async (e) => {
+    document.getElementById('item-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const id = document.getElementById('item-id').value;
       const fd = new FormData();
@@ -282,7 +287,7 @@
       closeForm();
       toast('Product saved');
       load();
-    });
+    }));
 
     let searchTimer;
     document.getElementById('search').addEventListener('input', () => {

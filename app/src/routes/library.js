@@ -1,24 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const multer = require('multer');
 const { db, UPLOADS_DIR } = require('../db');
+const { assertFlat, parseMoney } = require('../validate');
 
 const router = express.Router();
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename(req, file, cb) {
-      const ext = path.extname(file.originalname || '').slice(0, 10);
-      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-    }
-  }),
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter(req, file, cb) {
-    cb(null, /^image\//.test(file.mimetype));
-  }
-});
+const { imageUpload: upload } = require('../uploads');
 
 function serialize(row) {
   return {
@@ -46,7 +34,7 @@ function fields(body) {
     sku: body.sku ? String(body.sku).trim() : null,
     dimensions: body.dimensions ? String(body.dimensions).trim() : null,
     finish: body.finish ? String(body.finish).trim() : null,
-    cost: body.cost !== undefined && body.cost !== '' ? Number(body.cost) : null,
+    cost: parseMoney(body.cost, 'Cost'),
     notes: body.notes ? String(body.notes).trim() : null
   };
 }
@@ -57,8 +45,20 @@ function deleteUpload(imagePath) {
   fs.unlink(full, () => {});
 }
 
+
+// Validate the body; on failure also remove the file multer already wrote for this request.
+function parseBody(parser, req) {
+  try {
+    assertFlat(req.body);
+    return parser(req.body || {});
+  } catch (err) {
+    if (req.file) deleteUpload(req.file.filename);
+    throw err;
+  }
+}
+
 router.get('/api/library', (req, res) => {
-  const q = (req.query.q || '').trim();
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   let rows;
   if (q) {
     const like = `%${q}%`;
@@ -74,7 +74,7 @@ router.get('/api/library', (req, res) => {
 });
 
 router.post('/api/library', upload.single('image'), (req, res) => {
-  const data = fields(req.body);
+  const data = parseBody(fields, req);
   if (!data.title) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Title is required' });
@@ -94,7 +94,7 @@ router.put('/api/library/:id', upload.single('image'), (req, res) => {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(404).json({ error: 'Not found' });
   }
-  const data = fields(req.body);
+  const data = parseBody(fields, req);
   if (!data.title) {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Title is required' });

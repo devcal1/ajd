@@ -7,7 +7,11 @@ class SqliteSessionStore extends session.Store {
   get(sid, cb) {
     try {
       const row = db.prepare('SELECT data, expires_at FROM sessions WHERE sid = ?').get(sid);
-      if (!row || row.expires_at < Date.now()) return cb(null, null);
+      if (!row) return cb(null, null);
+      if (row.expires_at < Date.now()) {
+        db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
+        return cb(null, null);
+      }
       cb(null, JSON.parse(row.data));
     } catch (err) {
       cb(err);

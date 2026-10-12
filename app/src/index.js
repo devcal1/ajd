@@ -18,6 +18,11 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());
+// JSON bodies are flat key/values everywhere in this app; reject nested values up front.
+app.use((req, res, next) => {
+  try { require('./validate').assertFlat(req.body); } catch (err) { return next(err); }
+  next();
+});
 app.use(sessionMiddleware);
 
 // Public, unauthenticated: the login page's own assets, and the login/logout endpoints.
@@ -41,6 +46,22 @@ app.use(passwordRoutes);
 app.use(express.static(PUBLIC_DIR));
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+
+// Last-resort error handler: bad JSON, oversize uploads and unexpected throws come back as
+// JSON (the frontend's api() reads `error`), never as an HTML stack trace.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  let status = err.status || err.statusCode || 500;
+  let message = status < 500 ? err.message : 'Something went wrong';
+  if (err.code === 'LIMIT_FILE_SIZE') { status = 413; message = 'That file is too large (8MB maximum)'; }
+  else if (err.type === 'entity.parse.failed') { status = 400; message = 'Invalid JSON'; }
+  else if (err.name === 'MulterError') { status = 400; message = 'Upload problem: ' + err.message; }
+  if (status >= 500) console.error('[ajd] unhandled error:', err);
+  res.status(status).json({ error: message });
+});
+
+// One bad request must never take the whole server (and every other session) down.
+process.on('unhandledRejection', err => console.error('[ajd] unhandled rejection:', err));
 
 app.listen(PORT, () => {
   console.log(`[ajd] listening on http://localhost:${PORT}`);

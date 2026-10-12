@@ -24,7 +24,7 @@
     <div id="content"></div>
   </main>
 
-  <div id="modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeForm()">
+  <div id="modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeForm(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-lg">
       <h2 class="font-display text-xl mb-4" style="color:var(--ink)">Edit project</h2>
       <form id="project-form" class="space-y-3">
@@ -97,7 +97,7 @@
     </div>
   </div>
 
-  <div id="room-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeRoomForm()">
+  <div id="room-modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeRoomForm(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-sm">
       <h2 id="room-modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add room</h2>
       <form id="room-form" class="space-y-3">
@@ -117,7 +117,7 @@
     </div>
   </div>
 
-  <div id="selection-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeSelectionForm()">
+  <div id="selection-modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeSelectionForm(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-lg">
       <h2 id="selection-modal-title" class="font-display text-xl mb-4" style="color:var(--ink)">Add selection</h2>
       <form id="selection-form" class="space-y-3">
@@ -203,7 +203,7 @@
     </div>
   </div>
 
-  <div id="sync-modal-backdrop" class="modal-backdrop hidden" onclick="if(event.target===this) closeSyncModal()">
+  <div id="sync-modal-backdrop" class="modal-backdrop hidden" onmousedown="this._md = event.target===this" onclick="if(this._md && event.target===this) closeSyncModal(); this._md=false">
     <div class="card modal-body p-6 w-full max-w-lg">
       <h2 id="sync-title" class="font-display text-xl mb-2" style="color:var(--ink)"></h2>
       <div id="sync-body" class="text-sm"></div>
@@ -214,7 +214,7 @@
   <div id="toast" class="toast"></div>
   <script src="/js/shared.js"></script>
   <script>
-    const id = new URLSearchParams(location.search).get('id');
+    const id = (new URLSearchParams(location.search).get('id') || '').replace(/\D/g, '');
     let project = null;
     let rooms = [];
     let libraryItems = [];
@@ -235,10 +235,14 @@
       }
       try {
         project = await api(`/api/projects/${id}`);
-        await loadRooms();
       } catch (e) {
         document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">Project not found.</p>`;
         return;
+      }
+      try {
+        await loadRooms();
+      } catch (e) {
+        toast(e.message || 'Could not load rooms');
       }
       render();
     }
@@ -292,7 +296,7 @@
     }
 
     function totalSelectionCost() {
-      return rooms.reduce((sum, r) => sum + r.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
+      return rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
     }
 
     function approvedCost() {
@@ -308,7 +312,7 @@
     }
 
     function roomCardHtml(room) {
-      const roomTotal = room.selections.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
+      const roomTotal = room.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
       const rows = room.selections.length
         ? room.selections.map(sel => selectionRowHtml(room, sel)).join('')
         : `<p class="text-sm py-3" style="color:var(--ink-soft)">No selections yet.</p>`;
@@ -479,7 +483,7 @@
       document.getElementById('issue-note').focus();
     }
 
-    async function confirmIssue() {
+    const confirmIssue = guard(async function confirmIssue() {
       const note = document.getElementById('issue-note').value;
       try {
         const rev = await api(`/api/projects/${id}/revisions`, { method: 'POST', body: JSON.stringify({ note }) });
@@ -487,7 +491,7 @@
       } catch (err) { toast(err.message || 'Could not issue revision'); return; }
       closeSyncModal();
       refreshRooms();
-    }
+    });
 
     async function restoreRevision(revId) {
       const rev = revisions.find(r => r.id === revId);
@@ -503,7 +507,9 @@
     async function deleteRevision(revId) {
       const rev = revisions.find(r => r.id === revId);
       if (!rev || !confirm(`Permanently delete ${rev.label}? This cannot be undone.`)) return;
-      await api(`/api/revisions/${revId}`, { method: 'DELETE' });
+      try {
+        await api(`/api/revisions/${revId}`, { method: 'DELETE' });
+      } catch (err) { toast(err.message || 'Something went wrong'); return; }
       toast(rev.label + ' deleted');
       refreshRooms();
     }
@@ -553,7 +559,7 @@
       document.getElementById('modal-backdrop').classList.add('hidden');
     }
 
-    document.getElementById('project-form').addEventListener('submit', async (e) => {
+    document.getElementById('project-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const fd = new FormData();
       fd.append('name', document.getElementById('f-name').value);
@@ -584,22 +590,27 @@
       }
       closeForm();
       toast('Project saved');
+      docGroup = null;
       load();
-    });
+    }));
 
     async function toggleArchive() {
       if (!project.archived && !confirm(`Archive "${project.name}"?\n\nIt will be hidden from the dashboard. You can show archived projects there and unarchive it at any time.`)) return;
-      await api(`/api/projects/${id}/archive`, {
-        method: 'POST',
-        body: JSON.stringify({ archive: !project.archived })
-      });
+      try {
+        await api(`/api/projects/${id}/archive`, {
+          method: 'POST',
+          body: JSON.stringify({ archive: !project.archived })
+        });
+      } catch (err) { toast(err.message || 'Something went wrong'); return; }
       toast(project.archived ? 'Project unarchived' : 'Project archived');
       load();
     }
 
     async function remove() {
       if (!confirm('Permanently delete this project? This cannot be undone.')) return;
-      await api(`/api/projects/${id}`, { method: 'DELETE' });
+      try {
+        await api(`/api/projects/${id}`, { method: 'DELETE' });
+      } catch (err) { toast(err.message || 'Something went wrong'); return; }
       toast('Project deleted');
       window.location.href = '/';
     }
@@ -626,7 +637,7 @@
       document.getElementById('room-modal-backdrop').classList.add('hidden');
     }
 
-    document.getElementById('room-form').addEventListener('submit', async (e) => {
+    document.getElementById('room-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const roomId = document.getElementById('room-id').value;
       const name = document.getElementById('f-room-name').value;
@@ -643,11 +654,13 @@
       closeRoomForm();
       toast('Room saved');
       refreshRooms();
-    });
+    }));
 
     async function removeRoom(roomId) {
       if (!confirm('Delete this room and all of its selections? This cannot be undone.')) return;
-      await api(`/api/rooms/${roomId}`, { method: 'DELETE' });
+      try {
+        await api(`/api/rooms/${roomId}`, { method: 'DELETE' });
+      } catch (err) { toast(err.message || 'Something went wrong'); return; }
       toast('Room deleted');
       refreshRooms();
     }
@@ -721,7 +734,7 @@
       document.getElementById('sel-library-item-id').value = match.id;
     });
 
-    document.getElementById('selection-form').addEventListener('submit', async (e) => {
+    document.getElementById('selection-form').addEventListener('submit', guard(async (e) => {
       e.preventDefault();
       const selId = document.getElementById('sel-id').value;
       const roomId = document.getElementById('sel-room-id').value;
@@ -755,7 +768,7 @@
       closeSelectionForm();
       toast('Selection saved');
       refreshRooms();
-    });
+    }));
 
     function syncValue(field, v) {
       if (v == null || v === '') return '<em>empty</em>';
@@ -807,7 +820,9 @@
 
     async function removeSelection(selId) {
       if (!confirm('Delete this selection? This cannot be undone.')) return;
-      await api(`/api/selections/${selId}`, { method: 'DELETE' });
+      try {
+        await api(`/api/selections/${selId}`, { method: 'DELETE' });
+      } catch (err) { toast(err.message || 'Something went wrong'); return; }
       toast('Selection deleted');
       refreshRooms();
     }

@@ -21,11 +21,15 @@ function revisionLabel(seq) {
   return seq <= 26 ? `Rev ${String.fromCharCode(64 + seq)}` : `Rev ${seq}`;
 }
 
+// Files created by copyUpload since the last resetCopies(); a failed transaction deletes them.
+let createdCopies = [];
+
 function copyUpload(filename) {
   if (!filename) return null;
   const copy = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(filename)}`;
   try {
     fs.copyFileSync(path.join(UPLOADS_DIR, filename), path.join(UPLOADS_DIR, copy));
+    createdCopies.push(copy);
     return copy;
   } catch (e) {
     return null; // source file missing: keep the row, drop the image
@@ -63,7 +67,12 @@ function liveSnapshot(projectId) {
 function createRevision(projectId, note) {
   const snapshot = liveSnapshot(projectId);
   snapshot.rooms.forEach(r => r.selections.forEach(s => { s.imagePath = copyUpload(s.imagePath); }));
-  const seq = (db.prepare('SELECT MAX(seq) AS m FROM document_revisions WHERE project_id = ?').get(projectId).m || 0) + 1;
+  // Never reuse a number, even after the latest revision is deleted (see migration 011).
+  const seq = Math.max(
+    db.prepare('SELECT revision_seq AS n FROM projects WHERE id = ?').get(projectId).n || 0,
+    db.prepare('SELECT MAX(seq) AS m FROM document_revisions WHERE project_id = ?').get(projectId).m || 0
+  ) + 1;
+  db.prepare('UPDATE projects SET revision_seq = ? WHERE id = ?').run(seq, projectId);
   const result = db.prepare(`
     INSERT INTO document_revisions (project_id, seq, label, note, snapshot) VALUES (?, ?, ?, ?, ?)
   `).run(projectId, seq, revisionLabel(seq), note || null, JSON.stringify(snapshot));
@@ -172,10 +181,11 @@ router.get('/api/revisions/:id/compare', (req, res) => {
   if (!row) return;
   let target;
   let targetLabel = 'Current document';
-  if (!req.query.to || req.query.to === 'live') {
+  const to = typeof req.query.to === 'string' ? req.query.to : '';
+  if (!to || to === 'live') {
     target = liveSnapshot(row.project_id);
   } else {
-    const other = db.prepare('SELECT * FROM document_revisions WHERE id = ? AND project_id = ?').get(req.query.to, row.project_id);
+    const other = db.prepare('SELECT * FROM document_revisions WHERE id = ? AND project_id = ?').get(to, row.project_id);
     if (!other) return res.status(404).json({ error: 'Revision to compare with not found' });
     target = JSON.parse(other.snapshot);
     targetLabel = other.label;
@@ -192,7 +202,9 @@ router.post('/api/revisions/:id/restore', (req, res) => {
   const snapshot = JSON.parse(row.snapshot);
   const liveImages = [];
   let backup = null;
-  transaction(() => {
+  createdCopies = [];
+  try {
+    transaction(() => {
     const live = liveSnapshot(row.project_id);
     if (live.rooms.length) backup = createRevision(row.project_id, `Saved automatically before restoring ${row.label}`);
     db.prepare('SELECT image_path FROM document_selections WHERE room_id IN (SELECT id FROM document_rooms WHERE project_id = ?)')
@@ -211,7 +223,14 @@ router.post('/api/revisions/:id/restore', (req, res) => {
           s.status, s.notes, s.source_url || null, copyUpload(s.imagePath));
       });
     });
-  });
+    });
+  } catch (err) {
+    // The DB rolled back; the image copies made along the way must not be left orphaned.
+    createdCopies.forEach(deleteUpload);
+    createdCopies = [];
+    throw err;
+  }
+  createdCopies = [];
   liveImages.forEach(deleteUpload);
   res.json({ restored: row.label, backup: backup ? summary(backup) : null });
 });

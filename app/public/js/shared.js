@@ -8,8 +8,32 @@ function toast(msg) {
 }
 
 function money(n) {
-  return '$' + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const v = Number(n || 0);
+  const d = Number.isInteger(v) ? 0 : 2;
+  return '$' + v.toLocaleString('en-AU', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
+
+function guard(fn) {
+  let busy = false;
+  return async function (...args) {
+    if (args[0] && typeof args[0].preventDefault === 'function') args[0].preventDefault();
+    if (busy) return;
+    busy = true;
+    try {
+      return await fn.apply(this, args);
+    } finally {
+      busy = false;
+    }
+  };
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const m = document.querySelector('.modal-backdrop:not(.hidden)');
+  if (!m) return;
+  m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  m.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+});
 
 async function api(path, options = {}) {
   const res = await fetch(path, {

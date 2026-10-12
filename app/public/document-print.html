@@ -40,8 +40,8 @@
   <script src="/js/shared.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
-    const id = params.get('id');
-    const revisionId = params.get('revision');
+    const id = (params.get('id') || '').replace(/\D/g, '');
+    const revisionId = (params.get('revision') || '').replace(/\D/g, '');
     // Per-project display settings (set in the project's Edit dialog); filled in by load().
     let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, showSupplierColumn: true, showSourceLinks: false, headerText: '', grouping: 'room' };
     let bySupplier = false;
@@ -50,9 +50,9 @@
 
     function tableHead(hasImages, withSupplier) {
       const cols = [
-        hasImages ? '<col style="width:60px">' : '', '<col>', withSupplier ? '<col style="width:92px">' : '',
-        '<col style="width:100px"><col style="width:34px">',
-        S.showCosts ? '<col style="width:62px"><col style="width:70px">' : '', S.showApproval ? '<col style="width:124px">' : ''
+        hasImages ? '<col style="width:60px">' : '', '<col>', withSupplier ? '<col style="width:88px">' : '',
+        '<col style="width:96px"><col style="width:44px">',
+        S.showCosts ? '<col style="width:72px"><col style="width:80px">' : '', S.showApproval ? '<col style="width:124px">' : ''
       ].join('');
       return `<colgroup>${cols}</colgroup><thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th>${withSupplier ? '<th>Supplier</th>' : ''}<th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
     }
@@ -110,7 +110,7 @@
             ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(roomTotal)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
-            <table class="doc-table w-full" style="min-width:600px">
+            <table class="doc-table w-full" style="min-width:680px">
               ${tableHead(hasImages, S.showSupplierColumn)}
               <tbody>${rows}</tbody>
             </table>
@@ -121,7 +121,7 @@
     // Supplier is free text, so group on a normalised key (case, spacing and punctuation
     // ignored) and label each group with its most common spelling.
     function supplierKey(name) {
-      return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      return String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
     }
 
     function supplierGroups(rooms) {
@@ -152,7 +152,7 @@
             ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(total)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
-            <table class="doc-table w-full" style="min-width:600px">
+            <table class="doc-table w-full" style="min-width:680px">
               ${tableHead(hasImages)}
               <tbody>${rows}</tbody>
             </table>
