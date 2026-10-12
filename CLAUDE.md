@@ -359,7 +359,7 @@ code, not decisions.
    (`normalizePdfSettings`; a PUT without the field keeps the stored value, so the
    dashboard's edit form can't reset them), `project.html`'s Edit dialog edits them,
    and `document-print.html` reads `project.pdfSettings` so preview and PDF follow
-   alike. A `?group=` URL param overrides the grouping setting.
+   alike. `showSupplierColumn` (default on) adds a Supplier column in the room-grouped view only. A `?group=` URL param overrides the grouping setting.
 3. ~~Group items by supplier~~ — **built 2026-10-12**, committed locally, not yet
    pushed/released. `document-print.html?id=&group=supplier` (and
    `/api/projects/:id/document.pdf?group=supplier`, linked from `project.html` as
@@ -371,6 +371,8 @@ code, not decisions.
    warning" above.
 
 ## Working conventions for this project
+
+- Links inside the app open in the same tab (no `target="_blank"`) — the owner asked for this.
 
 - No standing iteration loop is active for `app/` the way `ITERATE.md`
   described for the retired `ajd.html` — treat new work as direct, scoped

@@ -42,11 +42,11 @@
     const id = params.get('id');
     const revisionId = params.get('revision');
     // Per-project display settings (set in the project's Edit dialog); filled in by load().
-    let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, headerText: '', grouping: 'room' };
+    let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, showSupplierColumn: true, headerText: '', grouping: 'room' };
     let bySupplier = false;
 
-    function tableHead(hasImages) {
-      return `<thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th><th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
+    function tableHead(hasImages, withSupplier) {
+      return `<thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th>${withSupplier ? '<th>Supplier</th>' : ''}<th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
     }
 
     function esc(s) {
@@ -66,6 +66,8 @@
         ? `<img src="${esc(sel.imagePath)}" class="doc-thumb" alt="">`
         : '';
       const spec = [sel.dimensions, sel.finish].filter(Boolean).join(', ');
+      // The by-supplier view already groups under the supplier name, so the column is room-view only.
+      const withSupplier = S.showSupplierColumn && !roomName;
       const lineTotal = sel.cost != null ? (sel.cost * (sel.qty || 1)) : null;
       const approvalHtml = sel.status === 'approved'
         ? `<span style="color:var(--green); font-weight:600">Approved</span>`
@@ -75,8 +77,9 @@
           ${showThumb ? `<td>${thumb}</td>` : ''}
           <td>
             <p style="color:var(--ink)" class="font-semibold">${esc(sel.title)}</p>
-            <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, ...(S.showDetails ? [sel.category, sel.sku] : [])] : (S.showDetails ? [sel.category, sel.supplier, sel.sku] : [])).filter(Boolean).join(' · ')) || ''}</p>
+            <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, ...(S.showDetails ? [sel.category, sel.sku] : [])] : (S.showDetails ? (withSupplier ? [sel.category, sel.sku] : [sel.category, sel.supplier, sel.sku]) : [])).filter(Boolean).join(' · ')) || ''}</p>
           </td>
+          ${withSupplier ? `<td style="color:var(--ink-soft)">${esc(sel.supplier) || '—'}</td>` : ''}
           <td style="color:var(--ink-soft)">${esc(spec) || '—'}</td>
           <td style="color:var(--ink-soft)">${sel.qty || 1}</td>
           ${S.showCosts ? `<td style="color:var(--ink-soft)">${sel.cost != null ? money(sel.cost) : '—'}</td>
@@ -99,7 +102,7 @@
           </div>
           <div class="overflow-x-auto">
             <table class="doc-table w-full" style="min-width:560px">
-              ${tableHead(hasImages)}
+              ${tableHead(hasImages, S.showSupplierColumn)}
               <tbody>${rows}</tbody>
             </table>
           </div>

@@ -25,6 +25,7 @@ const DEFAULT_PDF_SETTINGS = {
   showImages: true,
   showApproval: true,
   showDetails: true,
+  showSupplierColumn: true,
   headerText: '',
   grouping: 'room'
 };
@@ -37,7 +38,7 @@ function normalizePdfSettings(raw) {
   }
   input = input && typeof input === 'object' ? input : {};
   const out = { ...DEFAULT_PDF_SETTINGS };
-  ['showCosts', 'showImages', 'showApproval', 'showDetails'].forEach(k => {
+  ['showCosts', 'showImages', 'showApproval', 'showDetails', 'showSupplierColumn'].forEach(k => {
     if (typeof input[k] === 'boolean') out[k] = input[k];
   });
   if (typeof input.headerText === 'string') out.headerText = input.headerText.trim().slice(0, 120);

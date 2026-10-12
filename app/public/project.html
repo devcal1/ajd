@@ -72,6 +72,7 @@
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-images"> Show images</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-approval"> Show approval column</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-details"> Show category / supplier / SKU</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-supplier"> Show supplier column</label>
           </div>
           <div class="grid grid-cols-2 gap-3 mt-2">
             <div>
@@ -264,9 +265,9 @@
             ${project.notes ? `<p class="text-sm mt-3 whitespace-pre-wrap" style="color:var(--ink)">${esc(project.notes)}</p>` : ''}
             <div class="flex items-center gap-2 flex-wrap mt-4">
               <button onclick="openForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Edit</button>
-              <a href="/document-print.html?id=${id}" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview document</a>
+              <a href="/document-print.html?id=${id}" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Preview document</a>
               <a href="/api/projects/${id}/document.pdf" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">Download PDF</a>
-              <a href="/document-print.html?id=${id}&group=supplier" target="_blank" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block" title="Same document grouped by supplier, for ordering">Preview by supplier</a>
+              <a href="/document-print.html?id=${id}&group=supplier" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block" title="Same document grouped by supplier, for ordering">Preview by supplier</a>
               <a href="/api/projects/${id}/document.pdf?group=supplier" class="btn-ghost px-4 py-2 rounded-lg text-sm inline-block">PDF by supplier</a>
               <button onclick="toggleArchive()" class="btn-ghost px-4 py-2 rounded-lg text-sm">${project.archived ? 'Unarchive' : 'Archive'}</button>
               ${project.archived ? `<button onclick="remove()" class="btn-ghost px-4 py-2 rounded-lg text-sm" style="color:var(--red)">Delete</button>` : ''}
@@ -387,7 +388,7 @@
             <p class="text-xs" style="color:var(--ink-soft)">${r.roomCount} room${r.roomCount === 1 ? '' : 's'} · ${r.selectionCount} selection${r.selectionCount === 1 ? '' : 's'}${r.note ? ' · ' + esc(r.note) : ''}</p>
           </div>
           <div class="flex items-center gap-1 flex-wrap">
-            <a href="/document-print.html?id=${id}&revision=${r.id}" target="_blank" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">View</a>
+            <a href="/document-print.html?id=${id}&revision=${r.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">View</a>
             <a href="/api/projects/${id}/document.pdf?revision=${r.id}" class="btn-ghost px-3 py-1 rounded-lg text-xs inline-block">PDF</a>
             <button onclick="openCompare(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Compare</button>
             <button onclick="restoreRevision(${r.id})" class="btn-ghost px-3 py-1 rounded-lg text-xs">Restore</button>
@@ -470,6 +471,7 @@
       document.getElementById('f-pdf-images').checked = ps.showImages !== false;
       document.getElementById('f-pdf-approval').checked = ps.showApproval !== false;
       document.getElementById('f-pdf-details').checked = ps.showDetails !== false;
+      document.getElementById('f-pdf-supplier').checked = ps.showSupplierColumn !== false;
       document.getElementById('f-pdf-header').value = ps.headerText || '';
       document.getElementById('f-pdf-grouping').value = ps.grouping || 'room';
       document.getElementById('modal-backdrop').classList.remove('hidden');
@@ -492,6 +494,7 @@
         showImages: document.getElementById('f-pdf-images').checked,
         showApproval: document.getElementById('f-pdf-approval').checked,
         showDetails: document.getElementById('f-pdf-details').checked,
+        showSupplierColumn: document.getElementById('f-pdf-supplier').checked,
         headerText: document.getElementById('f-pdf-header').value,
         grouping: document.getElementById('f-pdf-grouping').value
       }));
