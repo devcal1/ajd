@@ -272,6 +272,18 @@ filename only (`image_path`/`cover_image_path` columns), served via
 `/uploads/<filename>` (static, but still behind `requireAuth` since it's
 mounted after that middleware in `index.js`).
 
+## Library change warning
+
+Migration `007_selection_library_snapshot` adds `document_selections.library_snapshot`
+(JSON of the linked library item's title/category/supplier/sku/dimensions/finish/cost/image
+as of the last import or refresh; existing linked rows were snapshotted from the library's
+current values). `routes/documents.js` compares it with the live library item and adds
+`libraryStatus` (`none`/`current`/`changed`/`removed`) and `libraryDiff` to each serialized
+selection. `project.html` shows a "Library updated" / "Library item deleted" badge opening a
+prompt that lists each field's before/after; `POST /api/selections/:id/library-sync`
+(`update` / `keep` / `dismiss`) resolves it. Update copies spec fields and photo (file is
+copied) but never qty/status/notes. The badge is not shown in `document-print.html`.
+
 ## Features, by page
 
 - **Projects dashboard** (`index.html`) — grid of project cards, search by
@@ -342,14 +354,9 @@ code, not decisions.
    they are grouped by room only), for ordering from one supplier at a time. The
    `supplier` field is free text, so grouping will need to cope with spelling and
    case variants of the same supplier.
-4. **Warn when an item changed in the library after it was brought into a
-   project.** A button or badge on a selection that says its library item has
-   been updated since import. Importing currently copies the fields into a new
-   `document_selections` row (it links back through `library_item_id` but keeps
-   no snapshot and no import time), so detecting "changed since" needs one of
-   those added, and a decision on what the button does (show the differences,
-   refresh the selection from the library, or both). `library_item_id` is set to
-   NULL if the library item is deleted, so that case needs handling too.
+4. ~~Warn when an item changed in the library after import~~ — **built
+   2026-10-12**, committed locally, not yet pushed/released. See "Library change
+   warning" above.
 
 ## Working conventions for this project
 
