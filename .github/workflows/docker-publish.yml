@@ -1,10 +1,11 @@
 name: Publish Docker image
 
 # Builds app/Dockerfile and pushes it to GHCR whenever a version tag is
-# pushed, so umbrel-app-store/ajd-design-manager/docker-compose.yml's
-# `image:` reference stays a real, pullable image rather than aspirational.
-# Tag format: app-v1.2.3 (matches the "version" field in
-# umbrel-app-store/ajd-design-manager/umbrel-app.yml).
+# pushed, so the `image:` line in devcal1/tenon-umbrel-store's
+# tenon-ajd-design-manager/docker-compose.yml stays a real, pullable image
+# rather than aspirational.
+# Tag format: app-v1.2.3 (matches the "version" field in that store's
+# tenon-ajd-design-manager/umbrel-app.yml).
 on:
   push:
     tags:

@@ -1,5 +1,6 @@
 # Local dev/test compose file only — NOT the Umbrel packaging (that lives in
-# umbrel-app-store/, added in Stage 6, and uses the app_proxy convention).
+# the tenon-ajd-design-manager app in devcal1/tenon-umbrel-store, and uses the
+# app_proxy convention).
 services:
   web:
     build: .

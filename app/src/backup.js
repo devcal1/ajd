@@ -3,7 +3,7 @@ const path = require('path');
 const { db, DATA_DIR, UPLOADS_DIR } = require('./db');
 
 // Backups live inside DATA_DIR, the same directory both app/docker-compose.yml
-// and umbrel-app-store's compose file already mount as a persistent volume
+// and the Umbrel store's compose file already mount as a persistent volume
 // (${APP_DATA_DIR}/data on Umbrel) -- so a scheduled snapshot here is
 // automatically covered by Umbrel's own host-level backup feature with no
 // extra wiring, as long as that directory is included in what gets backed up.

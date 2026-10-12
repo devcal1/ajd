@@ -44,9 +44,10 @@ sequential stages, each its own commit:
 4. **Rooms & selections** — the room-by-room FF&E design document.
 5. **PDF export** — server-side, real PDFs via `puppeteer-core` driving a
    system/local Chromium.
-6. **Umbrel packaging** — a standalone community app store under
-   `umbrel-app-store/`, plus a GitHub Actions workflow that publishes the
-   Docker image to GHCR.
+6. **Umbrel packaging** — originally a store folder in this repo, then moved
+   (2026-10-12) into the Tenon store, `devcal1/tenon-umbrel-store`, as the
+   `tenon-ajd-design-manager` app (see Packaging below); plus a GitHub Actions
+   workflow that publishes the Docker image to GHCR.
 
 That was the full planned stage order (Library → Projects → design
 documents → PDF export → Umbrel packaging); it is now closed. Further work
@@ -126,18 +127,26 @@ iteration loop for this app the way there was for the retired `ajd.html`
   doesn't download its own, keeping the image smaller) and sets
   `PUPPETEER_EXECUTABLE_PATH`. `app/docker-compose.yml` is the **local
   dev/test** compose file (builds from `app/Dockerfile` directly).
-  `umbrel-app-store/` is a separate, **standalone Umbrel community app
-  store** (its own `umbrel-app-store.yml` + `ajd-design-manager/umbrel-
-  app.yml` + `ajd-design-manager/docker-compose.yml`) — point Umbrel's "Add
-  community app store" at this repo's URL + `/umbrel-app-store`. That
-  compose file runs behind Umbrel's `app_proxy` convention and pulls a
-  **prebuilt** `ghcr.io/devcal1/ajd-design-manager:<version>` image rather
-  than building on-device; `.github/workflows/docker-publish.yml` builds and
-  publishes that image to GHCR when a tag matching `app-vX.Y.Z` is pushed
-  (see `umbrel-app-store/README.md` for the exact release steps — bump
-  `umbrel-app.yml`'s `version:` and the compose file's image tag together
-  with the git tag, and make the GHCR package public after the first push,
-  since Umbrel pulls anonymously).
+  **The Umbrel packaging does not live in this repo.** It is the
+  `tenon-ajd-design-manager` app (`umbrel-app.yml`, `docker-compose.yml`,
+  `icon.svg`, `data/`) in the public Tenon community app store,
+  **`https://github.com/devcal1/tenon-umbrel-store`** (store id `tenon`, port
+  4934), which Umbrel adds as a store by that repo URL — Umbrel cannot add a
+  store from a subfolder of another repo, and it requires every app id to be
+  prefixed with the store id, which is why a first attempt at keeping a store
+  folder in this repo 404'd. That compose file runs behind Umbrel's `app_proxy`
+  (Umbrel's own login off, since the app has its own password), and pulls a
+  **prebuilt** `ghcr.io/devcal1/ajd-design-manager:<version>@sha256:<digest>`
+  image rather than building on-device. `.github/workflows/docker-publish.yml`
+  builds and publishes that image to GHCR when a tag matching `app-vX.Y.Z` is
+  pushed (the package is public, since Umbrel pulls anonymously). **Releasing:**
+  push the tag here, read the new manifest digest from the registry, then in
+  the Tenon store paste the `image:` line (tag + digest) and bump `version:` in
+  `tenon-ajd-design-manager/umbrel-app.yml` to match — the store's README has
+  the exact steps. The app's id (`tenon-ajd-design-manager`) is permanent:
+  Umbrel treats a change as uninstall-and-reinstall, which deletes the data
+  directory. The old `umbrel-app-store/` folder in this repo is superseded and
+  carries a notice saying so; it is safe to delete.
 
 ## Auth
 
@@ -299,7 +308,7 @@ mounted after that middleware in `index.js`).
   `{ id, up() }` entry for any schema change, never edit a migration that's
   already shipped/applied.
 - `app/docker-compose.yml` (local dev/test, builds from source) and
-  `umbrel-app-store/ajd-design-manager/docker-compose.yml` (Umbrel
+  `tenon-ajd-design-manager/docker-compose.yml` in the Tenon store (Umbrel
   packaging, pulls a prebuilt GHCR image) are deliberately separate files
   with different conventions — don't merge them or assume one supersedes
   the other.
