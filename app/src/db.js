@@ -152,6 +152,13 @@ const MIGRATIONS = [
         WHERE library_item_id IS NOT NULL;
       `);
     }
+  },
+  {
+    id: '008_project_pdf_settings',
+    up() {
+      // JSON of per-project document display options; NULL = defaults. See routes/projects.js.
+      db.exec(`ALTER TABLE projects ADD COLUMN pdf_settings TEXT`);
+    }
   }
 ];
 

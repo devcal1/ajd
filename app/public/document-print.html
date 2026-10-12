@@ -40,7 +40,13 @@
   <script>
     const params = new URLSearchParams(location.search);
     const id = params.get('id');
-    const bySupplier = params.get('group') === 'supplier';
+    // Per-project display settings (set in the project's Edit dialog); filled in by load().
+    let S = { showCosts: true, showImages: true, showApproval: true, showDetails: true, headerText: '', grouping: 'room' };
+    let bySupplier = false;
+
+    function tableHead(hasImages) {
+      return `<thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th><th>Spec</th><th>Qty</th>${S.showCosts ? '<th>Cost</th><th>Total</th>' : ''}${S.showApproval ? '<th>Approval</th>' : ''}</tr></thead>`;
+    }
 
     function esc(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -68,13 +74,13 @@
           ${showThumb ? `<td>${thumb}</td>` : ''}
           <td>
             <p style="color:var(--ink)" class="font-semibold">${esc(sel.title)}</p>
-            <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, sel.category, sel.sku] : [sel.category, sel.supplier, sel.sku]).filter(Boolean).join(' · ')) || ''}</p>
+            <p style="color:var(--ink-soft)" class="text-xs">${esc((roomName ? [roomName, ...(S.showDetails ? [sel.category, sel.sku] : [])] : (S.showDetails ? [sel.category, sel.supplier, sel.sku] : [])).filter(Boolean).join(' · ')) || ''}</p>
           </td>
           <td style="color:var(--ink-soft)">${esc(spec) || '—'}</td>
           <td style="color:var(--ink-soft)">${sel.qty || 1}</td>
-          <td style="color:var(--ink-soft)">${sel.cost != null ? money(sel.cost) : '—'}</td>
-          <td style="color:var(--ink)" class="font-semibold">${lineTotal != null ? money(lineTotal) : '—'}</td>
-          <td>${approvalHtml}</td>
+          ${S.showCosts ? `<td style="color:var(--ink-soft)">${sel.cost != null ? money(sel.cost) : '—'}</td>
+          <td style="color:var(--ink)" class="font-semibold">${lineTotal != null ? money(lineTotal) : '—'}</td>` : ''}
+          ${S.showApproval ? `<td>${approvalHtml}</td>` : ''}
         </tr>`;
     }
 
@@ -82,17 +88,17 @@
       const live = room.selections.filter(s => s.status !== 'rejected');
       if (!live.length) return '';
       const roomTotal = live.reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0);
-      const hasImages = live.some(s => s.imagePath);
+      const hasImages = S.showImages && live.some(s => s.imagePath);
       const rows = live.map(sel => selectionRowHtml(sel, hasImages)).join('');
       return `
         <div class="mb-8 doc-room">
           <div class="flex items-baseline justify-between mb-2 doc-room-head">
             <h2 class="font-display text-lg" style="color:var(--ink)">${esc(room.name)}</h2>
-            <span class="text-sm" style="color:var(--ink-soft)">${money(roomTotal)}</span>
+            ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(roomTotal)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
             <table class="doc-table w-full" style="min-width:560px">
-              <thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th><th>Spec</th><th>Qty</th><th>Cost</th><th>Total</th><th>Approval</th></tr></thead>
+              ${tableHead(hasImages)}
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -124,17 +130,17 @@
 
     function supplierSectionHtml(group) {
       const total = group.items.reduce((s, i) => s + (i.sel.cost || 0) * (i.sel.qty || 1), 0);
-      const hasImages = group.items.some(i => i.sel.imagePath);
+      const hasImages = S.showImages && group.items.some(i => i.sel.imagePath);
       const rows = group.items.map(i => selectionRowHtml(i.sel, hasImages, i.roomName)).join('');
       return `
         <div class="mb-8 doc-room">
           <div class="flex items-baseline justify-between mb-2 doc-room-head">
             <h2 class="font-display text-lg" style="color:var(--ink)">${esc(group.name)}</h2>
-            <span class="text-sm" style="color:var(--ink-soft)">${money(total)}</span>
+            ${S.showCosts ? `<span class="text-sm" style="color:var(--ink-soft)">${money(total)}</span>` : ''}
           </div>
           <div class="overflow-x-auto">
             <table class="doc-table w-full" style="min-width:560px">
-              <thead><tr>${hasImages ? '<th></th>' : ''}<th>Item</th><th>Spec</th><th>Qty</th><th>Cost</th><th>Total</th><th>Approval</th></tr></thead>
+              ${tableHead(hasImages)}
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -155,6 +161,9 @@
         document.getElementById('content').innerHTML = `<p style="color:var(--ink-soft)">Project not found.</p>`;
         return;
       }
+      S = Object.assign(S, project.pdfSettings || {});
+      const groupParam = params.get('group');
+      bySupplier = groupParam ? groupParam === 'supplier' : S.grouping === 'supplier';
       const grandTotal = rooms.reduce((sum, r) => sum + r.selections.filter(s => s.status !== 'rejected').reduce((s, sel) => s + (sel.cost || 0) * (sel.qty || 1), 0), 0);
       const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
       const sections = (bySupplier ? supplierGroups(rooms).map(supplierSectionHtml) : rooms.map(roomSectionHtml)).filter(Boolean);
@@ -162,17 +171,17 @@
         <div class="flex items-start justify-between mb-8 pb-6" style="border-bottom:1px solid var(--line)">
           <div>
             <p class="font-display text-2xl" style="color:var(--ink)">AJ Interiors</p>
-            <p class="text-xs" style="color:var(--ink-soft)">FF&amp;E design document${bySupplier ? ' · by supplier' : ''}</p>
+            <p class="text-xs" style="color:var(--ink-soft)">${esc(S.headerText || 'FF&E design document')}${bySupplier ? ' · by supplier' : ''}</p>
             <p class="text-xs" style="color:var(--ink-soft)">${esc(today)}</p>
           </div>
         </div>
         <h1 class="font-display text-3xl mb-1" style="color:var(--ink)">${esc(project.name)}</h1>
         <p class="text-sm mb-6" style="color:var(--ink-soft)">${project.clientName ? `Prepared for ${esc(project.clientName)}` : ''}</p>
         ${sections.length ? sections.join('') : `<p class="text-sm" style="color:var(--ink-soft)">No selections to show yet.</p>`}
-        <div class="flex items-center justify-between pt-4 mt-2" style="border-top:1px solid var(--line)">
+        ${S.showCosts ? `<div class="flex items-center justify-between pt-4 mt-2" style="border-top:1px solid var(--line)">
           <p class="font-display text-lg" style="color:var(--ink)">Document total</p>
           <p class="font-display text-lg" style="color:var(--ink)">${money(grandTotal)}</p>
-        </div>
+        </div>` : ''}
       `;
     }
 

@@ -345,11 +345,15 @@ code, not decisions.
    per-project and not meant for this. It will touch the PDF route (an issued
    version should presumably render the frozen data, not the live rows) and
    needs a new migration (append-only, see Working conventions).
-2. **Per-project PDF display settings.** Let each project choose how its PDF is
-   shown (e.g. which columns, images on/off, whether costs appear, what the
-   header says), instead of one fixed layout for every project. Settings would
-   be stored per project and read by `document-print.html`, which is shared by
-   the in-browser preview and the PDF renderer, so one change covers both.
+2. ~~Per-project PDF display settings~~ — **built 2026-10-12**, committed locally,
+   not yet pushed/released. Migration `008_project_pdf_settings` adds
+   `projects.pdf_settings` (JSON; NULL = defaults). Options: show costs/totals,
+   images, approval column, category/supplier/SKU line, header text, default
+   grouping (room/supplier). `routes/projects.js` normalizes them
+   (`normalizePdfSettings`; a PUT without the field keeps the stored value, so the
+   dashboard's edit form can't reset them), `project.html`'s Edit dialog edits them,
+   and `document-print.html` reads `project.pdfSettings` so preview and PDF follow
+   alike. A `?group=` URL param overrides the grouping setting.
 3. ~~Group items by supplier~~ — **built 2026-10-12**, committed locally, not yet
    pushed/released. `document-print.html?id=&group=supplier` (and
    `/api/projects/:id/document.pdf?group=supplier`, linked from `project.html` as

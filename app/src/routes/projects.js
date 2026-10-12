@@ -20,8 +20,34 @@ const upload = multer({
   }
 });
 
+const DEFAULT_PDF_SETTINGS = {
+  showCosts: true,
+  showImages: true,
+  showApproval: true,
+  showDetails: true,
+  headerText: '',
+  grouping: 'room'
+};
+
+// Fill gaps and coerce types so a stored/posted value can never break the print page.
+function normalizePdfSettings(raw) {
+  let input = raw;
+  if (typeof raw === 'string') {
+    try { input = JSON.parse(raw); } catch (e) { input = {}; }
+  }
+  input = input && typeof input === 'object' ? input : {};
+  const out = { ...DEFAULT_PDF_SETTINGS };
+  ['showCosts', 'showImages', 'showApproval', 'showDetails'].forEach(k => {
+    if (typeof input[k] === 'boolean') out[k] = input[k];
+  });
+  if (typeof input.headerText === 'string') out.headerText = input.headerText.trim().slice(0, 120);
+  if (input.grouping === 'supplier') out.grouping = 'supplier';
+  return out;
+}
+
 function serialize(row) {
   return {
+    pdfSettings: normalizePdfSettings(row.pdf_settings),
     id: row.id,
     name: row.name,
     clientName: row.client_name,
@@ -90,6 +116,10 @@ router.put('/api/projects/:id', upload.single('coverImage'), (req, res) => {
     if (req.file) deleteUpload(req.file.filename);
     return res.status(400).json({ error: 'Name is required' });
   }
+  // Absent field (e.g. the dashboard's edit form) keeps whatever is stored.
+  const pdfSettings = req.body.pdfSettings !== undefined
+    ? JSON.stringify(normalizePdfSettings(req.body.pdfSettings))
+    : existing.pdf_settings;
   let coverImagePath = existing.cover_image_path;
   if (req.file) {
     deleteUpload(existing.cover_image_path);
@@ -100,10 +130,10 @@ router.put('/api/projects/:id', upload.single('coverImage'), (req, res) => {
   }
   db.prepare(`
     UPDATE projects
-    SET name = ?, client_name = ?, status = ?, budget = ?, notes = ?, cover_image_path = ?,
+    SET name = ?, client_name = ?, status = ?, budget = ?, notes = ?, cover_image_path = ?, pdf_settings = ?,
         updated_at = datetime('now')
     WHERE id = ?
-  `).run(data.name, data.clientName, data.status, data.budget, data.notes, coverImagePath, req.params.id);
+  `).run(data.name, data.clientName, data.status, data.budget, data.notes, coverImagePath, pdfSettings, req.params.id);
   const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
   res.json(serialize(row));
 });

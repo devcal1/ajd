@@ -65,6 +65,28 @@
             <input type="checkbox" id="f-remove-cover"> Remove current cover image
           </label>
         </div>
+        <div>
+          <label class="text-xs font-semibold" style="color:var(--ink-soft)">Document display (preview &amp; PDF)</label>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 mt-1 text-sm" style="color:var(--ink)">
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-costs"> Show costs and totals</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-images"> Show images</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-approval"> Show approval column</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="f-pdf-details"> Show category / supplier / SKU</label>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mt-2">
+            <div>
+              <label class="text-xs font-semibold" style="color:var(--ink-soft)">Header text</label>
+              <input id="f-pdf-header" maxlength="120" placeholder="FF&amp;E design document" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+            </div>
+            <div>
+              <label class="text-xs font-semibold" style="color:var(--ink-soft)">Group by</label>
+              <select id="f-pdf-grouping" class="w-full border rounded-lg px-3 py-2 text-sm" style="border-color:var(--line)">
+                <option value="room">Room</option>
+                <option value="supplier">Supplier</option>
+              </select>
+            </div>
+          </div>
+        </div>
         <div class="flex items-center justify-end gap-2 pt-2">
           <button type="button" onclick="closeForm()" class="btn-ghost px-4 py-2 rounded-lg text-sm">Cancel</button>
           <button type="submit" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Save</button>
@@ -357,6 +379,13 @@
       document.getElementById('f-cover-name').textContent = 'No file chosen';
       document.getElementById('f-remove-cover-wrap').classList.toggle('hidden', !project.coverImagePath);
       document.getElementById('f-remove-cover').checked = false;
+      const ps = project.pdfSettings || {};
+      document.getElementById('f-pdf-costs').checked = ps.showCosts !== false;
+      document.getElementById('f-pdf-images').checked = ps.showImages !== false;
+      document.getElementById('f-pdf-approval').checked = ps.showApproval !== false;
+      document.getElementById('f-pdf-details').checked = ps.showDetails !== false;
+      document.getElementById('f-pdf-header').value = ps.headerText || '';
+      document.getElementById('f-pdf-grouping').value = ps.grouping || 'room';
       document.getElementById('modal-backdrop').classList.remove('hidden');
     }
 
@@ -372,6 +401,14 @@
       fd.append('status', document.getElementById('f-status').value);
       fd.append('budget', document.getElementById('f-budget').value);
       fd.append('notes', document.getElementById('f-notes').value);
+      fd.append('pdfSettings', JSON.stringify({
+        showCosts: document.getElementById('f-pdf-costs').checked,
+        showImages: document.getElementById('f-pdf-images').checked,
+        showApproval: document.getElementById('f-pdf-approval').checked,
+        showDetails: document.getElementById('f-pdf-details').checked,
+        headerText: document.getElementById('f-pdf-header').value,
+        grouping: document.getElementById('f-pdf-grouping').value
+      }));
       const file = document.getElementById('f-cover').files[0];
       if (file) fd.append('coverImage', file);
       if (document.getElementById('f-remove-cover').checked) fd.append('removeCoverImage', 'true');
